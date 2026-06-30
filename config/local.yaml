@@ -2,7 +2,7 @@
 env: "local"
 
 # Путь к локальному хранилищу данных
-storage_path: "./storage/storage.db"
+storage_path: "../../storage/storage.db"
 
 # Настройки HTTP-сервера
 http_server:
