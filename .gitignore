@@ -27,6 +27,18 @@ go.work.sum
 # env file
 .env
 
+# Конфигурации для локальной разработки
+*.local.yaml
+config/*.local.yaml
+
+# Базы данных
+*.db
+*.sqlite
+*.sqlite3
+
+# Системные файлы
+Thumbs.db
+
 # Editor/IDE
 # .idea/
 # .vscode/
