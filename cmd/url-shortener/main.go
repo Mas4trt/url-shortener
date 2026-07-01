@@ -4,11 +4,19 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 	"url-shortener/internal/config"
+	"url-shortener/internal/http-server/handlers/url/save"
+	"url-shortener/internal/http-server/middleware/logger"
 	sl "url-shortener/internal/lib/logger/slog"
+	urlservice "url-shortener/internal/lib/services/url"
 	"url-shortener/internal/storage/sqlite"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-playground/validator/v10"
 )
 
 const (
@@ -24,20 +32,19 @@ func main() {
 
 	//TODO: init logger: slog
 	log := setupLogger(cfg.Env)
-	log.Info("starting url-shortener", slog.String("env", cfg.Env))
 
 	//TODO: init storage: sqlite
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	store, err := sqlite.New(ctx, cfg.StoragePath)
+	storage, err := sqlite.New(ctx, cfg.StoragePath)
 	if err != nil {
 		log.Error("failed to init storage", sl.Err(err))
 		os.Exit(1)
 	}
 
 	defer func() {
-		if err := store.Close(); err != nil {
+		if err := storage.Close(); err != nil {
 			log.Error("failed to close storage", sl.Err(err))
 		}
 	}()
@@ -45,8 +52,32 @@ func main() {
 	log.Info("storage initialized successfully")
 
 	//TODO: init router: chi, chi render
+	router := chi.NewRouter()
+
+	router.Use(middleware.RequestID)
+	router.Use(logger.New(log))
+	router.Use(middleware.Recoverer)
 
 	//TODO: run server
+	log.Info("starting server", slog.String("address", cfg.ServerConfig.Address))
+
+	urlService := urlservice.New(log, storage)
+	v := validator.New()
+	router.Post("/url", save.New(log, urlService, v))
+
+	srv := &http.Server{
+		Addr:         cfg.ServerConfig.Address,
+		Handler:      router,
+		ReadTimeout:  cfg.ServerConfig.Timeout,
+		WriteTimeout: cfg.ServerConfig.Timeout,
+		IdleTimeout:  cfg.ServerConfig.IdleTimeout,
+	}
+
+	if err := srv.ListenAndServe(); err != nil {
+		log.Error("failed to start server")
+	}
+
+	log.Error("server stopped")
 }
 
 // fetchConfigPath выбирает откуда взять путь к конфигу
