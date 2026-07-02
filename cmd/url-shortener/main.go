@@ -101,11 +101,6 @@ func main() {
 		log.Error("failed to shutdown server gracefully", sl.Err(err))
 	}
 
-	// Закрываем базу данных после остановки сервера
-	if err := storage.Close(); err != nil {
-		log.Error("failed to close storage", sl.Err(err))
-	}
-
 	log.Error("server stopped completely")
 }
 
