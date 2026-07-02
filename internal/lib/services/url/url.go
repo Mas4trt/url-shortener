@@ -53,7 +53,7 @@ func (s *Service) Save(ctx context.Context, rawURL string, customAlias string) (
 			return "", fmt.Errorf("%s: failed to generate alias: %w", op, err)
 		}
 
-		_, err = s.urlSaver.SaveURL(ctx, rawURL, customAlias)
+		_, err = s.urlSaver.SaveURL(ctx, rawURL, alias)
 		if err == nil {
 			return alias, nil
 		}
