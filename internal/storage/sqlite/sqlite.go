@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"url-shortener/internal/storage"
+	"url-shortener/internal/domian"
 
 	"modernc.org/sqlite"
 )
@@ -59,7 +59,7 @@ func (s *Storage) SaveURL(ctx context.Context, urlToSave string, alias string) (
 	if err != nil {
 		var sqliteErr *sqlite.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.Code() == errConstraintUnique {
-			return 0, fmt.Errorf("%s: %w", op, storage.ErrURLExist)
+			return 0, fmt.Errorf("%s: %w", op, domian.ErrURLExist)
 		}
 		return 0, fmt.Errorf("%s : %w", op, err)
 	}
@@ -83,7 +83,7 @@ func (s *Storage) GetURL(ctx context.Context, alias string) (string, error) {
 	if err != nil {
 		// Проверяем, вернулась ли ошибка из-за того, что запись не найдена
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("%s: %w", op, storage.ErrURLNotFound)
+			return "", fmt.Errorf("%s: %w", op, domian.ErrURLNotFound)
 		}
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
@@ -91,24 +91,24 @@ func (s *Storage) GetURL(ctx context.Context, alias string) (string, error) {
 	return urlToGet, nil
 }
 
-func (s *Storage) DeleteURL(ctx context.Context, alias string) error {
-	const op = "storage.sqlite.DeleteURL"
+// func (s *Storage) DeleteURL(ctx context.Context, alias string) error {
+// 	const op = "storage.sqlite.DeleteURL"
 
-	res, err := s.db.ExecContext(ctx, `DELETE FROM url WHERE alias = ?`, alias)
-	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
-	}
+// 	res, err := s.db.ExecContext(ctx, `DELETE FROM url WHERE alias = ?`, alias)
+// 	if err != nil {
+// 		return fmt.Errorf("%s: %w", op, err)
+// 	}
 
-	// Получаем количество удаленных строк
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("%s: failed to get rows affected: %w", op, err)
-	}
+// 	// Получаем количество удаленных строк
+// 	rowsAffected, err := res.RowsAffected()
+// 	if err != nil {
+// 		return fmt.Errorf("%s: failed to get rows affected: %w", op, err)
+// 	}
 
-	// Если ни одна строка не затронута, значит алиас не найден
-	if rowsAffected == 0 {
-		return fmt.Errorf("%s : %w", op, storage.ErrURLNotFound)
-	}
+// 	// Если ни одна строка не затронута, значит алиас не найден
+// 	if rowsAffected == 0 {
+// 		return fmt.Errorf("%s : %w", op, storage.ErrURLNotFound)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
