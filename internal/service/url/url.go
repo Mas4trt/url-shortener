@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"url-shortener/internal/domian"
+	"url-shortener/internal/domain"
 	"url-shortener/internal/lib/random"
 )
 
@@ -39,8 +39,8 @@ func (s *URLService) Save(ctx context.Context, rawURL string, customAlias string
 	if customAlias != "" {
 		_, err := s.urlSaver.SaveURL(ctx, rawURL, customAlias)
 		if err != nil {
-			if errors.Is(err, domian.ErrURLExist) {
-				return "", domian.ErrURLExist
+			if errors.Is(err, domain.ErrURLExist) {
+				return "", domain.ErrURLExist
 			}
 			return "", fmt.Errorf("%s : %w", op, err)
 		}
@@ -59,7 +59,7 @@ func (s *URLService) Save(ctx context.Context, rawURL string, customAlias string
 			return alias, nil
 		}
 
-		if errors.Is(err, domian.ErrURLExist) {
+		if errors.Is(err, domain.ErrURLExist) {
 			s.log.Warn("alias collision occurred, retrying", slog.String("alias", alias))
 			continue // Пробуем сгенерировать снова
 		}

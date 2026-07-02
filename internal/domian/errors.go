@@ -1,8 +1,0 @@
-package domian
-
-import "errors"
-
-var (
-	ErrURLNotFound = errors.New("url not found")
-	ErrURLExist    = errors.New("url already exist")
-)
