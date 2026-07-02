@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"url-shortener/internal/domian"
+	"url-shortener/internal/domain"
 	sl "url-shortener/internal/lib/logger/sl"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -68,7 +68,7 @@ func (h *URLHandler) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	alias, err := h.service.Save(r.Context(), req.URL, req.Alias)
-	if errors.Is(err, domian.ErrURLExist) {
+	if errors.Is(err, domain.ErrURLExist) {
 		log.Info("url already exists", slog.String("url", req.URL))
 		render.Status(r, http.StatusConflict)
 		render.JSON(w, r, Error("url already exists"))
