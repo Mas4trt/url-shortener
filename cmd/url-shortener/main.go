@@ -16,11 +16,14 @@ import (
 	"url-shortener/internal/delivery/http/middleware/logger"
 	sl "url-shortener/internal/lib/logger/sl"
 	service "url-shortener/internal/service/url"
-	"url-shortener/internal/storage/sqlite"
+	"url-shortener/internal/storage/postgres"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/validator/v10"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 const (
@@ -38,21 +41,19 @@ func main() {
 	log := setupLogger(cfg.Env)
 	log.Info("starting url-shortener", slog.String("env", cfg.Env))
 
-	//TODO: init storage: sqlite
+	runMigrations(cfg.DatabaseURL, log)
+
+	//TODO: init storage: postgres
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer dbCancel()
 
-	storage, err := sqlite.New(dbCtx, cfg.StoragePath)
+	storage, err := postgres.New(dbCtx, cfg.DatabaseURL)
 	if err != nil {
 		log.Error("failed to init storage", sl.Err(err))
 		os.Exit(1)
 	}
+	defer storage.Close()
 
-	defer func() {
-		if err := storage.Close(); err != nil {
-			log.Error("failed to close storage", sl.Err(err))
-		}
-	}()
 	log.Info("storage initialized successfully")
 
 	//TODO: run server
@@ -102,6 +103,27 @@ func main() {
 	}
 
 	log.Error("server stopped completely")
+}
+
+// Запускает миграции при старте приложения
+func runMigrations(dbURL string, log *slog.Logger) {
+	// В продакшене путь к папке может отличаться, здесь предполагаем локальный запуск
+	m, err := migrate.New("file://../../migrations", dbURL)
+	if err != nil {
+		log.Error("failed to initialize migrations", sl.Err(err))
+		os.Exit(1)
+	}
+	defer m.Close()
+
+	if err := m.Up(); err != nil {
+		if errors.Is(err, migrate.ErrNoChange) {
+			log.Info("no new migrations to apply")
+			return
+		}
+		log.Error("failed to apply migrations", sl.Err(err))
+		os.Exit(1)
+	}
+	log.Info("migrations applied successfully")
 }
 
 // fetchConfigPath выбирает откуда взять путь к конфигу

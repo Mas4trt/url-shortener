@@ -1,6 +1,8 @@
 # Окружение приложения: local, development, production
 env: "local"
 
+database_url: "postgres://user-1234:12345@localhost:5433/test-db?sslmode=disable"
+
 # Путь к локальному хранилищу данных
 storage_path: "../../storage/storage.db"
 

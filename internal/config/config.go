@@ -12,7 +12,7 @@ import (
 // Config содержит все настройки приложения
 type Config struct {
 	Env          string     `yaml:"env" env-required:"true"`
-	StoragePath  string     `yaml:"storage_path" env-required:"true"`
+	DatabaseURL  string     `yaml:"database_url" env:"DATABASE_URL" env-required:"true"`
 	ServerConfig HTTPServer `yaml:"http_server"`
 }
 

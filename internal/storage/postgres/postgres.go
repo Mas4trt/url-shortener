@@ -1,72 +1,55 @@
-package sqlite
+package postgres
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"url-shortener/internal/domian"
+	"url-shortener/internal/domain"
 
-	"modernc.org/sqlite"
-)
-
-const (
-	// errConstraintUnique — код ошибки уникальности SQLite
-	errConstraintUnique = 2067
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Storage struct {
-	db *sql.DB
+	pool *pgxpool.Pool
 }
 
 // New инициализирует базу данных и создает необходимые таблицы
-func New(ctx context.Context, storagePath string) (*Storage, error) {
+func New(ctx context.Context, connString string) (*Storage, error) {
 	const op = "storage.sqlite.New"
 
-	db, err := sql.Open("sqlite", storagePath)
+	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
 		return nil, fmt.Errorf("%s : %w", op, err)
 	}
 
-	if err := db.PingContext(ctx); err != nil {
+	if err := pool.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("%s :ping failed: %w", op, err)
 	}
 
-	_, err = db.ExecContext(ctx, `
-	CREATE TABLE IF NOT EXISTS url(
-		id INTEGER PRIMARY KEY,
-		alias TEXT NOT NULL UNIQUE,
-		url TEXT NOT NULL);
-	CREATE INDEX IF NOT EXISTS idx_alias ON url(alias);
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("%s: failed to create tables %w", op, err)
-	}
-
-	return &Storage{db: db}, nil
+	return &Storage{pool: pool}, nil
 }
 
 // Close закрывает соединение с БД
-func (s *Storage) Close() error {
-	return s.db.Close()
+func (s *Storage) Close() {
+	s.pool.Close()
 }
 
 // SaveURL сохраняет URL и его алиас в БД
 func (s *Storage) SaveURL(ctx context.Context, urlToSave string, alias string) (int64, error) {
 	const op = "storage.sqlite.SaveURL"
 
-	res, err := s.db.ExecContext(ctx, "INSERT INTO url(url, alias) VALUES(?, ?)", urlToSave, alias)
+	var id int64
+	query := `INSERT INTO urlshortener.url (url, alias) VALUES ($1, $2) RETURNING id`
+
+	err := s.pool.QueryRow(ctx, query, urlToSave, alias).Scan(&id)
 	if err != nil {
-		var sqliteErr *sqlite.Error
-		if errors.As(err, &sqliteErr) && sqliteErr.Code() == errConstraintUnique {
-			return 0, fmt.Errorf("%s: %w", op, domian.ErrURLExist)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return 0, fmt.Errorf("%s: %w", op, domain.ErrURLExist)
 		}
 		return 0, fmt.Errorf("%s : %w", op, err)
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("%s: failed to get last insert id: %w", op, err)
 	}
 
 	return id, nil
@@ -76,14 +59,15 @@ func (s *Storage) GetURL(ctx context.Context, alias string) (string, error) {
 	const op = "storage.sqlite.GetURL"
 
 	var urlToGet string
+	query := `SELECT url FROM urlshortener.url WHERE alias = $1`
 
 	// QueryRowContext выполняет запрос, ожидая ровно одну строку
 	// Сразу же вызываем Scan, чтобы записать результат в urlToGet
-	err := s.db.QueryRowContext(ctx, `SELECT url FROM url WHERE alias = ?`, alias).Scan(&urlToGet)
+	err := s.pool.QueryRow(ctx, query, alias).Scan(&urlToGet)
 	if err != nil {
 		// Проверяем, вернулась ли ошибка из-за того, что запись не найдена
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("%s: %w", op, domian.ErrURLNotFound)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", fmt.Errorf("%s: %w", op, domain.ErrURLNotFound)
 		}
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
