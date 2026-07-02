@@ -8,6 +8,7 @@ import (
 	"url-shortener/internal/domain"
 	sl "url-shortener/internal/lib/logger/sl"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
@@ -20,12 +21,14 @@ type Request struct {
 
 type SaveResponse struct {
 	Response
+	URL   string `json:"url,omitempty"`
 	Alias string `json:"alias,omitempty"`
 }
 
 // URLService — интерфейс, который хэндлер ожидает от бизнес-логики
 type URLService interface {
 	Save(ctx context.Context, rawURL string, customAlias string) (string, error)
+	Get(ctx context.Context, customAlias string) (string, error)
 }
 
 type URLHandler struct {
@@ -89,4 +92,39 @@ func (h *URLHandler) Save(w http.ResponseWriter, r *http.Request) {
 		Response: Ok(),
 		Alias:    alias,
 	})
+}
+
+func (h *URLHandler) Get(w http.ResponseWriter, r *http.Request) {
+	const op = "Handlers.URLHandler.Get"
+
+	log := h.log.With(
+		slog.String("op", op),
+		slog.String("request_id", middleware.GetReqID(r.Context())),
+	)
+
+	alias := chi.URLParam(r, "alias")
+	if alias == "" {
+		log.Info("alias is empty")
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, Error("invalid request"))
+		return
+	}
+
+	resURL, err := h.service.Get(r.Context(), alias)
+	if errors.Is(err, domain.ErrURLNotFound) {
+		log.Info("url not found", slog.String("alias", alias))
+		render.Status(r, http.StatusNotFound)
+		render.JSON(w, r, Error("not found"))
+		return
+	}
+	if err != nil {
+		log.Error("failed to get url", sl.Err(err))
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, Error("internal error"))
+		return
+	}
+
+	log.Info("got url", slog.String("url", resURL))
+
+	http.Redirect(w, r, resURL, http.StatusFound)
 }

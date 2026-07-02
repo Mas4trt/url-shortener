@@ -18,6 +18,7 @@ const (
 // URLSaver определяет интерфейс для сохранения URL
 type URLSaver interface {
 	SaveURL(ctx context.Context, urlToSave string, alias string) (int64, error)
+	GetURL(ctx context.Context, alias string) (string, error)
 }
 
 type URLService struct {
@@ -69,4 +70,22 @@ func (s *URLService) Save(ctx context.Context, rawURL string, customAlias string
 	}
 
 	return "", fmt.Errorf("%s: failed to generate unique alias after %d retries", op, maxRetries)
+}
+
+func (s *URLService) Get(ctx context.Context, customAlias string) (string, error) {
+	const op = "service.url.Get"
+
+	if customAlias == "" {
+		return "", fmt.Errorf("%s: %w", op, errors.New("alias is empty"))
+	}
+
+	urlFound, err := s.urlSaver.GetURL(ctx, customAlias)
+	if err != nil {
+		if errors.Is(err, domain.ErrURLNotFound) {
+			return "", domain.ErrURLNotFound
+		}
+		return "", fmt.Errorf("%s : %w", op, err)
+	}
+
+	return urlFound, nil
 }
