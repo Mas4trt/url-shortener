@@ -2,16 +2,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
+
 	"url-shortener/internal/config"
-	"url-shortener/internal/http-server/handlers/url/save"
-	"url-shortener/internal/http-server/middleware/logger"
-	sl "url-shortener/internal/lib/logger/slog"
-	urlservice "url-shortener/internal/lib/services/url"
+	"url-shortener/internal/delivery/http/handlers"
+	"url-shortener/internal/delivery/http/middleware/logger"
+	sl "url-shortener/internal/lib/logger/sl"
+	service "url-shortener/internal/service/url"
 	"url-shortener/internal/storage/sqlite"
 
 	"github.com/go-chi/chi/v5"
@@ -32,12 +36,13 @@ func main() {
 
 	//TODO: init logger: slog
 	log := setupLogger(cfg.Env)
+	log.Info("starting url-shortener", slog.String("env", cfg.Env))
 
 	//TODO: init storage: sqlite
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dbCancel()
 
-	storage, err := sqlite.New(ctx, cfg.StoragePath)
+	storage, err := sqlite.New(dbCtx, cfg.StoragePath)
 	if err != nil {
 		log.Error("failed to init storage", sl.Err(err))
 		os.Exit(1)
@@ -48,23 +53,24 @@ func main() {
 			log.Error("failed to close storage", sl.Err(err))
 		}
 	}()
-
 	log.Info("storage initialized successfully")
 
-	//TODO: init router: chi, chi render
-	router := chi.NewRouter()
+	//TODO: run server
+	urlService := service.New(log, storage)
+	val := validator.New()
+	urlHandler := handlers.NewURLHandler(log, urlService, val)
 
+	//TODO: init router: chi, chi render
+	// Настройка роутера
+	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(logger.New(log))
 	router.Use(middleware.Recoverer)
 
-	//TODO: run server
-	log.Info("starting server", slog.String("address", cfg.ServerConfig.Address))
+	// Роуты
+	router.Post("/url", urlHandler.Save)
 
-	urlService := urlservice.New(log, storage)
-	v := validator.New()
-	router.Post("/url", save.New(log, urlService, v))
-
+	// Конфигурация HTTP-сервера
 	srv := &http.Server{
 		Addr:         cfg.ServerConfig.Address,
 		Handler:      router,
@@ -73,11 +79,34 @@ func main() {
 		IdleTimeout:  cfg.ServerConfig.IdleTimeout,
 	}
 
-	if err := srv.ListenAndServe(); err != nil {
-		log.Error("failed to start server")
+	// Канал для отслеживания системных сигналов завершения
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		log.Info("starting HTTP server", slog.String("address", cfg.ServerConfig.Address))
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("failed to start server", sl.Err(err))
+		}
+	}()
+
+	<-done
+	log.Info("stopping server gracefully...")
+
+	// Даем серверу 10 секунд на завершение текущих запросов
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("failed to shutdown server gracefully", sl.Err(err))
 	}
 
-	log.Error("server stopped")
+	// Закрываем базу данных после остановки сервера
+	if err := storage.Close(); err != nil {
+		log.Error("failed to close storage", sl.Err(err))
+	}
+
+	log.Error("server stopped completely")
 }
 
 // fetchConfigPath выбирает откуда взять путь к конфигу
