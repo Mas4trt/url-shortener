@@ -9,6 +9,7 @@ import (
 	"url-shortener/internal/lib/random"
 )
 
+// TODO: вынести в конфиг
 const (
 	aliasLength = 6
 	maxRetries  = 5
