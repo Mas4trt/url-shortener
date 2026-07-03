@@ -1,0 +1,10 @@
+env: local
+database_url: postgres://localhost:5432/test
+
+http_server:
+  address: localhost:8080
+  timeout: 5s
+  idle_timeout: 30s
+
+alias_length: 10
+max_retries: 3
