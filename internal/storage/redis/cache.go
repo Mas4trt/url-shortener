@@ -2,18 +2,22 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"time"
 	service "url-shortener/internal/service/url"
 	"url-shortener/pkg/logger/sl"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/labstack/gommon/log"
 	"github.com/redis/go-redis/v9"
 )
 
 type Cache struct {
-	next service.URLRepository
-	rdb  *redis.Client
-	ttl  time.Duration
+	next  service.URLRepository
+	rdb   *redis.Client
+	ttl   time.Duration
+	group singleflight.Group
 }
 
 func New(next service.URLRepository, rdb *redis.Client, ttl time.Duration) *Cache {
@@ -43,20 +47,32 @@ func (c *Cache) Get(ctx context.Context, alias string) (string, error) {
 		return val, nil
 	}
 
-	if err != redis.Nil && err != nil {
-		log.Warn("redis get failed", sl.Err(err))
+	if err != redis.Nil {
+		log.Warn("redis down", sl.Err(err))
 	}
 
-	url, err := c.next.Get(ctx, alias)
+	v, err, _ := c.group.Do(alias, func() (interface{}, error) {
+		url, err := c.next.Get(ctx, alias)
+		if err != nil {
+			return "", err
+		}
+
+		err = c.rdb.Set(ctx, alias, url, c.ttl).Err()
+		if err != nil {
+			log.Warn("redis set failed", sl.Err(err))
+		}
+		return url, nil
+	})
+
 	if err != nil {
 		return "", err
 	}
 
-	err = c.rdb.Set(ctx, alias, url, c.ttl).Err()
-	if err != nil {
-		log.Warn("redis set failed", sl.Err(err))
+	res, ok := v.(string)
+	if !ok {
+		return "", errors.New("invalid type from singleflight")
 	}
-	return url, nil
+	return res, nil
 }
 
 func (c *Cache) Delete(ctx context.Context, alias string) error {
