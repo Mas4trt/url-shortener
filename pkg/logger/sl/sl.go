@@ -3,6 +3,7 @@ package sl
 import (
 	"context"
 	"log/slog"
+	"url-shortener/internal/domain"
 )
 
 func Err(err error) slog.Attr {
@@ -14,7 +15,7 @@ func Err(err error) slog.Attr {
 }
 
 func LoggerWithCtx(ctx context.Context, logger *slog.Logger) *slog.Logger {
-	reqID, ok := ctx.Value("request_id").(string)
+	reqID, ok := ctx.Value(domain.RequestIDKey).(string)
 	if !ok {
 		return logger
 	}
