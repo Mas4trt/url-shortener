@@ -30,3 +30,10 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
   
+  redis:
+    image: redis:7-alpine
+    container_name: urlshortener-redis
+    ports:
+      - "6379:6379"
+    restart: always
+  
