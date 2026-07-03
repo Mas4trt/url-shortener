@@ -6,7 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"url-shortener/internal/domain"
-	sl "url-shortener/internal/lib/logger/sl"
+	"url-shortener/internal/transport/http/response"
+	sl "url-shortener/pkg/logger/sl"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -20,12 +21,12 @@ type SaveRequest struct {
 }
 
 type SaveResponse struct {
-	Response
+	response.Response
 	Alias string `json:"alias,omitempty"`
 }
 
-// Service — интерфейс, который хэндлер ожидает от бизнес-логики
-type Service interface {
+// URLService — интерфейс, который хэндлер ожидает от бизнес-логики
+type URLService interface {
 	Save(ctx context.Context, url string, alias string) (string, error)
 	Get(ctx context.Context, alias string) (string, error)
 	Delete(ctx context.Context, alias string) error
@@ -33,11 +34,11 @@ type Service interface {
 
 type Handler struct {
 	log       *slog.Logger
-	service   Service
+	service   URLService
 	validator *validator.Validate
 }
 
-func New(log *slog.Logger, service Service, validator *validator.Validate) *Handler {
+func New(log *slog.Logger, service URLService, validator *validator.Validate) *Handler {
 	return &Handler{
 		log: log.With(
 			slog.String("layer", "handler"),
@@ -56,7 +57,7 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	var req SaveRequest
 	if err := render.DecodeJSON(r.Body, &req); err != nil {
 		log.Error("failed to decode request body", sl.Err(err))
-		respond(w, r, http.StatusBadRequest, Error("failed to decode request"))
+		response.Respond(w, r, http.StatusBadRequest, response.Error("failed to decode request"))
 		return
 	}
 
@@ -64,11 +65,11 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 		var validationErr validator.ValidationErrors
 		if errors.As(err, &validationErr) {
 			log.Error("invalid request", sl.Err(err))
-			respond(w, r, http.StatusBadRequest, ValidationError(validationErr))
+			response.Respond(w, r, http.StatusBadRequest, response.ValidationError(validationErr))
 			return
 		}
 		log.Error("validator failure", sl.Err(err))
-		respond(w, r, http.StatusInternalServerError, Error("validation error"))
+		response.Respond(w, r, http.StatusInternalServerError, response.Error("validation error"))
 		return
 	}
 
@@ -76,18 +77,18 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, domain.ErrURLExist):
 		log.Debug("url already exists", slog.String("alias", req.Alias))
-		respond(w, r, http.StatusConflict, Error("url already exists"))
+		response.Respond(w, r, http.StatusConflict, response.Error("url already exists"))
 		return
 	case err != nil:
 		log.Error("failed add url", sl.Err(err))
-		respond(w, r, http.StatusInternalServerError, Error("failed add url"))
+		response.Respond(w, r, http.StatusInternalServerError, response.Error("failed add url"))
 		return
 	}
 
 	log.Info("url added", slog.String("alias", alias))
 
-	respond(w, r, http.StatusOK, SaveResponse{
-		Response: Ok(),
+	response.Respond(w, r, http.StatusOK, SaveResponse{
+		Response: response.Ok(),
 		Alias:    alias,
 	})
 }
@@ -100,7 +101,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	alias := chi.URLParam(r, "alias")
 	if alias == "" {
 		log.Debug("alias is empty")
-		respond(w, r, http.StatusBadRequest, Error("invalid request"))
+		response.Respond(w, r, http.StatusBadRequest, response.Error("invalid request"))
 		return
 	}
 
@@ -108,11 +109,11 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, domain.ErrURLNotFound):
 		log.Debug("url not found", slog.String("alias", alias))
-		respond(w, r, http.StatusNotFound, Error("not found"))
+		response.Respond(w, r, http.StatusNotFound, response.Error("not found"))
 		return
 	case err != nil:
 		log.Error("failed to get url", sl.Err(err))
-		respond(w, r, http.StatusInternalServerError, Error("internal error"))
+		response.Respond(w, r, http.StatusInternalServerError, response.Error("internal error"))
 		return
 	}
 
@@ -129,18 +130,18 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	alias := chi.URLParam(r, "alias")
 	if alias == "" {
 		log.Debug("alias is empty")
-		respond(w, r, http.StatusBadRequest, Error("invalid request"))
+		response.Respond(w, r, http.StatusBadRequest, response.Error("invalid request"))
 		return
 	}
 
 	err := h.service.Delete(r.Context(), alias)
 	switch {
 	case errors.Is(err, domain.ErrURLNotFound):
-		respond(w, r, http.StatusNotFound, Error("not found"))
+		response.Respond(w, r, http.StatusNotFound, response.Error("not found"))
 		return
 	case err != nil:
 		log.Error("failed to delete url", sl.Err(err))
-		respond(w, r, http.StatusInternalServerError, Error("internal error"))
+		response.Respond(w, r, http.StatusInternalServerError, response.Error("internal error"))
 		return
 	}
 
@@ -154,9 +155,4 @@ func (h *Handler) logger(r *http.Request, op string) *slog.Logger {
 		slog.String("op", op),
 		slog.String("request_id", middleware.GetReqID(r.Context())),
 	)
-}
-
-func respond(w http.ResponseWriter, r *http.Request, code int, v any) {
-	render.Status(r, code)
-	render.JSON(w, r, v)
 }
