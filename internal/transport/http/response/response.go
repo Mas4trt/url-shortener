@@ -1,9 +1,11 @@
-package handlers
+package response
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
+	"github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -48,4 +50,10 @@ func ValidationError(errs validator.ValidationErrors) Response {
 		Status: StatusError,
 		Error:  strings.Join(errMsgs, ", "),
 	}
+}
+
+// Respond — универсальная обертка для отправки JSON-ответа
+func Respond(w http.ResponseWriter, r *http.Request, code int, v any) {
+	render.Status(r, code)
+	render.JSON(w, r, v)
 }
