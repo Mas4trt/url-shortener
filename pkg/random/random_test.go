@@ -3,7 +3,7 @@ package random_test
 import (
 	"strings"
 	"testing"
-	"url-shortener/internal/lib/random"
+	"url-shortener/pkg/random"
 )
 
 func TestNewRandomString(t *testing.T) {
