@@ -15,7 +15,7 @@ import (
 	service "url-shortener/internal/service/url"
 	"url-shortener/internal/storage/postgres"
 	"url-shortener/internal/transport/http/handlers"
-	"url-shortener/internal/transport/http/middleware/logger"
+	logger "url-shortener/internal/transport/http/middleware"
 	sl "url-shortener/pkg/logger/sl"
 	"url-shortener/pkg/random"
 
