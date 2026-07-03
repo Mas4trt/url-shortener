@@ -25,7 +25,18 @@ func New(log *slog.Logger) func(next http.Handler) http.Handler {
 				reqArgs = append(reqArgs, slog.String("request_id", reqID))
 			}
 
-			entry := logger.With(reqArgs...)
+			if r.URL.Path == "/health" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			entry := logger.With(slog.Group("request",
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.String("remote_addr", r.RemoteAddr),
+				slog.String("user_agent", r.UserAgent()),
+			),
+			)
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			start := time.Now()
 
