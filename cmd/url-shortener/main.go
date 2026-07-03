@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"url-shortener/internal/config"
-	"url-shortener/internal/delivery/http/handlers"
-	"url-shortener/internal/delivery/http/middleware/logger"
-	sl "url-shortener/internal/lib/logger/sl"
-	"url-shortener/internal/lib/random"
 	service "url-shortener/internal/service/url"
 	"url-shortener/internal/storage/postgres"
+	"url-shortener/internal/transport/http/handlers"
+	"url-shortener/internal/transport/http/middleware/logger"
+	sl "url-shortener/pkg/logger/sl"
+	"url-shortener/pkg/random"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
