@@ -6,86 +6,122 @@ import (
 	"fmt"
 	"log/slog"
 	"url-shortener/internal/domain"
-	"url-shortener/internal/lib/random"
 )
 
-// TODO: вынести в конфиг
-const (
-	aliasLength = 6
-	maxRetries  = 5
-)
-
-// URLSaver определяет интерфейс для сохранения URL
-type URLSaver interface {
-	SaveURL(ctx context.Context, urlToSave string, alias string) (int64, error)
-	GetURL(ctx context.Context, alias string) (string, error)
+// Repository определяет интерфейс для сохранения URL
+type Repository interface {
+	Save(ctx context.Context, urlToSave string, alias string) error
+	Get(ctx context.Context, alias string) (string, error)
+	Delete(ctx context.Context, alias string) error
 }
 
-type URLService struct {
-	log      *slog.Logger
-	urlSaver URLSaver
+type AliasGenerator interface {
+	Generate(size int) (string, error)
 }
 
-func New(log *slog.Logger, urlSaver URLSaver) *URLService {
-	return &URLService{
-		log:      log,
-		urlSaver: urlSaver,
+type Config struct {
+	AliasLength int
+	MaxRetries  int
+}
+
+type Service struct {
+	log        *slog.Logger
+	repository Repository
+	generator  AliasGenerator
+	cfg        Config
+}
+
+func New(log *slog.Logger, Repository Repository, generator AliasGenerator, cfg Config) (*Service, error) {
+	if cfg.AliasLength <= 0 {
+		return nil, fmt.Errorf("invalid config: alias length must be positive")
 	}
+	if cfg.MaxRetries <= 0 {
+		return nil, fmt.Errorf("invalid config: max retries must be positive")
+	}
+	return &Service{
+		log:        log,
+		repository: Repository,
+		generator:  generator,
+		cfg:        cfg,
+	}, nil
 }
 
-func (s *URLService) Save(ctx context.Context, rawURL string, customAlias string) (string, error) {
-	const op = "service.url.Save"
+func (s *Service) Save(ctx context.Context, url string, alias string) (string, error) {
+	const op = "service.URLService.Save"
 
-	// Если пользователь передал свой алиас — пробуем сохранить его
-	if customAlias != "" {
-		_, err := s.urlSaver.SaveURL(ctx, rawURL, customAlias)
-		if err != nil {
-			if errors.Is(err, domain.ErrURLExist) {
-				return "", domain.ErrURLExist
-			}
-			return "", fmt.Errorf("%s : %w", op, err)
-		}
-		return customAlias, nil
+	if alias != "" {
+		return s.saveAlias(ctx, url, alias)
 	}
 
-	// Если алиас пустой — генерируем случайный с повторными попытками
-	for i := 0; i < maxRetries; i++ {
-		alias, err := random.NewRandomString(aliasLength)
+	return s.saveGeneratedAlias(ctx, url)
+}
+
+func (s *Service) Get(ctx context.Context, alias string) (string, error) {
+	const op = "service.URLService.Get"
+
+	if alias == "" {
+		return "", fmt.Errorf("%s: %w", op, domain.ErrEmptyAlias)
+	}
+
+	url, err := s.repository.Get(ctx, alias)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return url, nil
+}
+
+func (s *Service) Delete(ctx context.Context, alias string) error {
+	const op = "service.URLService.Delete"
+
+	if alias == "" {
+		return fmt.Errorf("%s: %w", op, domain.ErrEmptyAlias)
+	}
+
+	if err := s.repository.Delete(ctx, alias); err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+func (s *Service) saveAlias(ctx context.Context, url string, alias string) (string, error) {
+	const op = "service.URLService.saveAlias"
+
+	if err := s.repository.Save(ctx, url, alias); err != nil {
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return alias, nil
+}
+
+func (s *Service) saveGeneratedAlias(ctx context.Context, url string) (string, error) {
+	const op = "service.URLService.saveGeneratedAlias"
+
+	for attempt := 1; attempt <= s.cfg.MaxRetries; attempt++ {
+
+		alias, err := s.generator.Generate(s.cfg.AliasLength)
 		if err != nil {
 			return "", fmt.Errorf("%s: failed to generate alias: %w", op, err)
 		}
 
-		_, err = s.urlSaver.SaveURL(ctx, rawURL, alias)
+		err = s.repository.Save(ctx, url, alias)
 		if err == nil {
 			return alias, nil
 		}
 
 		if errors.Is(err, domain.ErrURLExist) {
-			s.log.Warn("alias collision occurred, retrying", slog.String("alias", alias))
-			continue // Пробуем сгенерировать снова
+			s.log.Warn(
+				"alias collision",
+				slog.Int("max_attempts", s.cfg.MaxRetries),
+				slog.Int("attempt", attempt),
+				slog.String("alias", alias),
+			)
+			continue
 		}
 
-		// Какая-то другая ошибка БД
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	return "", fmt.Errorf("%s: failed to generate unique alias after %d retries", op, maxRetries)
-}
-
-func (s *URLService) Get(ctx context.Context, customAlias string) (string, error) {
-	const op = "service.url.Get"
-
-	if customAlias == "" {
-		return "", fmt.Errorf("%s: %w", op, errors.New("alias is empty"))
-	}
-
-	urlFound, err := s.urlSaver.GetURL(ctx, customAlias)
-	if err != nil {
-		if errors.Is(err, domain.ErrURLNotFound) {
-			return "", domain.ErrURLNotFound
-		}
-		return "", fmt.Errorf("%s : %w", op, err)
-	}
-
-	return urlFound, nil
+	return "", fmt.Errorf("%s: failed to generate unique alias after %d retries", op, s.cfg.MaxRetries)
 }

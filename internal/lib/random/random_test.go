@@ -38,7 +38,7 @@ func TestNewRandomString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			str1, err := random.NewRandomString(tt.size)
+			str1, err := random.New().Generate(tt.size)
 
 			// 1. Проверяем, что нет ошибки генерации
 			if err != nil {
@@ -64,7 +64,7 @@ func TestNewRandomString(t *testing.T) {
 				// Генерируем вторую строку и сравниваем с первой
 				// Для длины 1 или 2 шанс случайного совпадения слишком велик, поэтому проверяем только для size > 2
 				if tt.size > 2 {
-					str2, err := random.NewRandomString(tt.size)
+					str2, err := random.New().Generate(tt.size)
 					if err != nil {
 						t.Fatalf("unexpected error on second generation: %v", err)
 					}

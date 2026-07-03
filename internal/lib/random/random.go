@@ -5,9 +5,15 @@ import (
 	"fmt"
 )
 
+type Generator struct{}
+
+func New() *Generator {
+	return &Generator{}
+}
+
 const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
-func NewRandomString(size int) (string, error) {
+func (g *Generator) Generate(size int) (string, error) {
 	alias := make([]byte, size)
 
 	if _, err := rand.Read(alias); err != nil {

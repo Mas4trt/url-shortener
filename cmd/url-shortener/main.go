@@ -15,6 +15,7 @@ import (
 	"url-shortener/internal/delivery/http/handlers"
 	"url-shortener/internal/delivery/http/middleware/logger"
 	sl "url-shortener/internal/lib/logger/sl"
+	"url-shortener/internal/lib/random"
 	service "url-shortener/internal/service/url"
 	"url-shortener/internal/storage/postgres"
 
@@ -56,10 +57,22 @@ func main() {
 
 	log.Info("storage initialized successfully")
 
+	svcCfg := service.Config{
+		AliasLength: cfg.AliasLength,
+		MaxRetries:  cfg.MaxRetries,
+	}
+
+	aliasGen := random.New()
+
 	//TODO: run server
-	urlService := service.New(log, storage)
+	urlService, err := service.New(log, storage, aliasGen, svcCfg)
+	if err != nil {
+		log.Error("failed to init urlService", sl.Err(err))
+		os.Exit(1)
+	}
+
 	val := validator.New()
-	urlHandler := handlers.NewURLHandler(log, urlService, val)
+	urlHandler := handlers.New(log, urlService, val)
 
 	//TODO: init router: chi, chi render
 	// Настройка роутера
@@ -70,6 +83,8 @@ func main() {
 
 	// Роуты
 	router.Post("/url", urlHandler.Save)
+	router.Get("/{alias}", urlHandler.Get)
+	router.Delete("/{alias}", urlHandler.Delete)
 
 	// Конфигурация HTTP-сервера
 	srv := &http.Server{

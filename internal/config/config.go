@@ -14,6 +14,8 @@ type Config struct {
 	Env          string     `yaml:"env" env-required:"true"`
 	DatabaseURL  string     `yaml:"database_url" env:"DATABASE_URL" env-required:"true"`
 	ServerConfig HTTPServer `yaml:"http_server"`
+	AliasLength  int        `yaml:"alias_length" env-default:"6"`
+	MaxRetries   int        `yaml:"max_retries" env-default:"5"`
 }
 
 // HTTPServer содержит настройки для запуска HTTP-сервера
