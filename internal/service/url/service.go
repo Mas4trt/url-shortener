@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"url-shortener/internal/domain"
+	"url-shortener/pkg/logger/sl"
 )
 
 // URLRepository определяет интерфейс для сохранения URL
@@ -102,6 +103,8 @@ func (s *Service) saveAlias(ctx context.Context, url string, alias string) (stri
 func (s *Service) saveGeneratedAlias(ctx context.Context, url string) (string, error) {
 	const op = "service.URLService.saveGeneratedAlias"
 
+	log := sl.LoggerWithCtx(ctx, s.log)
+
 	for attempt := 1; attempt <= s.cfg.MaxRetries; attempt++ {
 
 		alias, err := s.generator.Generate(s.cfg.AliasLength)
@@ -115,7 +118,7 @@ func (s *Service) saveGeneratedAlias(ctx context.Context, url string) (string, e
 		}
 
 		if errors.Is(err, domain.ErrURLExist) {
-			s.log.Warn(
+			log.Warn(
 				"alias collision",
 				slog.Int("max_attempts", s.cfg.MaxRetries),
 				slog.Int("attempt", attempt),
