@@ -34,17 +34,14 @@ const (
 )
 
 func main() {
-	//TODO: init config: cleanenv
 	configPath := fetchConfigPath()
 	cfg := config.MustLoad(configPath)
 
-	//TODO: init logger: slog
 	log := setupLogger(cfg.Env)
 	log.Info("starting url-shortener", slog.String("env", cfg.Env))
 
 	runMigrations(cfg.DatabaseURL, log)
 
-	//TODO: init storage: postgres
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer dbCancel()
 
@@ -64,7 +61,6 @@ func main() {
 
 	aliasGen := random.New()
 
-	//TODO: run server
 	urlService, err := service.New(log, storage, aliasGen, svcCfg)
 	if err != nil {
 		log.Error("failed to init urlService", sl.Err(err))
@@ -74,7 +70,6 @@ func main() {
 	val := validator.New()
 	urlHandler := handlers.New(log, urlService, val)
 
-	//TODO: init router: chi, chi render
 	// Настройка роутера
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -122,8 +117,8 @@ func main() {
 
 // Запускает миграции при старте приложения
 func runMigrations(dbURL string, log *slog.Logger) {
-	// В продакшене путь к папке может отличаться, здесь предполагаем локальный запуск
-	m, err := migrate.New("file://../../migrations", dbURL)
+	path := "migrations"
+	m, err := migrate.New("file://"+path, dbURL)
 	if err != nil {
 		log.Error("failed to initialize migrations", sl.Err(err))
 		os.Exit(1)
