@@ -7,12 +7,15 @@ import (
 
 	"url-shortener/internal/config"
 
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const (
@@ -34,6 +37,9 @@ func startPostgres(
 		postgres.WithDatabase(postgresDB),
 		postgres.WithUsername(postgresUser),
 		postgres.WithPassword(postgresPassword),
+		testcontainers.WithWaitStrategy(
+			wait.ForListeningPort("5432/tcp"),
+		),
 	)
 
 	require.NoError(t, err)

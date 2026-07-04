@@ -1,8 +1,6 @@
 package integration
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
 )
 
@@ -59,10 +57,8 @@ func (s *IntegrationSuite) TestCreateURL_Validation() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			bodyBytes, err := json.Marshal(tt.payload)
-			s.Require().NoError(err)
 
-			req := s.NewRequest(http.MethodPost, "/", bytes.NewReader(bodyBytes))
+			req := s.NewRequest(http.MethodPost, "/url", tt.payload)
 			req.Header.Set("Content-Type", "application/json")
 
 			resp := s.Do(req)

@@ -76,7 +76,6 @@ func (s *IntegrationSuite) TestSaveURL() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			s.SetupTest()
 			if tt.setup != nil {
 				tt.setup()
 			}

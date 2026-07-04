@@ -1,16 +1,12 @@
 package integration
 
 import (
-	"bytes"
-	"encoding/json"
 	"net/http"
 	"sync"
 	"sync/atomic"
 )
 
 func (s *IntegrationSuite) TestConcurrent_CreateAliasRaceCondition() {
-	s.SetupTest()
-
 	const (
 		workers     = 50
 		targetAlias = "super-sale"
@@ -21,8 +17,6 @@ func (s *IntegrationSuite) TestConcurrent_CreateAliasRaceCondition() {
 		"url":   targetURL,
 		"alias": targetAlias,
 	}
-	bodyBytes, err := json.Marshal(reqBody)
-	s.Require().NoError(err)
 
 	var wg sync.WaitGroup
 	var (
@@ -40,7 +34,7 @@ func (s *IntegrationSuite) TestConcurrent_CreateAliasRaceCondition() {
 
 			<-startGun
 
-			req := s.NewRequest(http.MethodPost, "/", bytes.NewReader(bodyBytes))
+			req := s.NewRequest(http.MethodPost, "/url", reqBody)
 			req.Header.Set("Content-Type", "application/json")
 
 			resp := s.Do(req)
@@ -68,7 +62,7 @@ func (s *IntegrationSuite) TestConcurrent_CreateAliasRaceCondition() {
 	s.Require().Equal(int32(workers-1), conflictCount.Load(), "All other requests MUST be rejected with a conflict status")
 
 	var count int
-	err = s.db.QueryRow(s.ctx, "SELECT COUNT(*) FROM urlshortener.url WHERE alias = $1", targetAlias).Scan(&count)
+	err := s.db.QueryRow(s.ctx, "SELECT COUNT(*) FROM urlshortener.url WHERE alias = $1", targetAlias).Scan(&count)
 	s.Require().NoError(err)
 	s.Require().Equal(1, count, "Database MUST contain exactly 1 record for this alias")
 }

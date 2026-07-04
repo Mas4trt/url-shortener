@@ -3,6 +3,9 @@ package integration
 import (
 	"context"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"url-shortener/internal/bootstrap"
 	"url-shortener/internal/config"
@@ -35,6 +38,16 @@ func (s *IntegrationSuite) SetupSuite() {
 	var dbURL string
 	var redisAddr string
 
+	wd, _ := os.Getwd()
+	absPath := filepath.Join(wd, "..", "..", "..", "migrations")
+
+	// Преобразуем путь для Windows-совместимого формата file://
+	// Используем net/url для правильного формирования URI
+	migrationURL := (&url.URL{
+		Scheme: "file",
+		Path:   filepath.ToSlash(absPath),
+	}).String()
+
 	s.pgContainer, s.db, dbURL =
 		startPostgres(s.ctx, s.T())
 
@@ -48,7 +61,7 @@ func (s *IntegrationSuite) SetupSuite() {
 
 	require.NoError(
 		s.T(),
-		bootstrap.RunMigrations(s.cfg),
+		bootstrap.RunMigrations(migrationURL, s.cfg),
 	)
 
 	handler, cleanup, err :=
@@ -56,7 +69,9 @@ func (s *IntegrationSuite) SetupSuite() {
 
 	require.NoError(s.T(), err)
 
-	s.T().Cleanup(cleanup)
+	if cleanup != nil {
+		s.T().Cleanup(cleanup)
+	}
 
 	s.server = httptest.NewServer(handler)
 }
