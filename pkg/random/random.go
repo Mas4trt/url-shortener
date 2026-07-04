@@ -3,25 +3,61 @@ package random
 import (
 	"crypto/rand"
 	"fmt"
+	"io"
 )
-
-type Generator struct{}
-
-func New() *Generator {
-	return &Generator{}
-}
 
 const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
-func (g *Generator) Generate(size int) (string, error) {
-	alias := make([]byte, size)
+const maxRandomByte = 256 - (256 % len(charset))
 
-	if _, err := rand.Read(alias); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+type Generator struct {
+	size          int
+	entropyReader io.Reader
+}
+
+type Option func(*Generator)
+
+func WithReader(r io.Reader) Option {
+	return func(g *Generator) {
+		g.entropyReader = r
+	}
+}
+
+func New(size int, opts ...Option) *Generator {
+	g := &Generator{
+		size:          size,
+		entropyReader: rand.Reader,
 	}
 
-	for i := range alias {
-		alias[i] = charset[alias[i]%byte(len(charset))]
+	for _, opt := range opts {
+		opt(g)
 	}
-	return string(alias), nil
+
+	return g
+}
+
+func (g *Generator) Generate() (string, error) {
+	result := make([]byte, g.size)
+	random := make([]byte, g.size)
+
+	for i := 0; i < g.size; {
+		if _, err := io.ReadFull(g.entropyReader, random); err != nil {
+			return "", fmt.Errorf("generate random bytes: %w", err)
+		}
+
+		for _, b := range random {
+			if int(b) >= maxRandomByte {
+				continue
+			}
+
+			result[i] = charset[int(b)%len(charset)]
+			i++
+
+			if i == g.size {
+				break
+			}
+		}
+	}
+
+	return string(result), nil
 }
