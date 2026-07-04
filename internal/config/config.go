@@ -11,11 +11,13 @@ import (
 
 // Config содержит все настройки приложения
 type Config struct {
-	Env          string     `yaml:"env" env-required:"true"`
-	DatabaseURL  string     `yaml:"database_url" env:"DATABASE_URL" env-required:"true"`
-	ServerConfig HTTPServer `yaml:"http_server"`
-	AliasLength  int        `yaml:"alias_length" env-default:"6"`
-	MaxRetries   int        `yaml:"max_retries" env-default:"5"`
+	Env          string        `yaml:"env" env-required:"true"`
+	DatabaseURL  string        `yaml:"database_url" env:"DATABASE_URL" env-required:"true"`
+	RedisAddr    string        `yaml:"redis_url" env:"REDIS_URL" env-required:"true"`
+	ServerConfig HTTPServer    `yaml:"http_server"`
+	AliasLength  int           `yaml:"alias_length" env-default:"6"`
+	MaxRetries   int           `yaml:"max_retries" env-default:"5"`
+	TTL          time.Duration `yaml:"ttl" env-default:"3600s"`
 }
 
 // HTTPServer содержит настройки для запуска HTTP-сервера
