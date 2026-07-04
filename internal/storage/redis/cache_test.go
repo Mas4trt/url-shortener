@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"url-shortener/internal/storage/mocks"
 	cache "url-shortener/internal/storage/redis"
+	"url-shortener/internal/storage/redis/mocks"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func newCache(t *testing.T, repo *mocks.URLRepository) (*cache.Cache, *miniredis.Miniredis) {
+func newCache(t *testing.T, repo *mocks.Storage) (*cache.Cache, *miniredis.Miniredis) {
 	t.Helper()
 
 	mr, err := miniredis.Run()
@@ -40,7 +40,7 @@ func newCache(t *testing.T, repo *mocks.URLRepository) (*cache.Cache, *miniredis
 }
 
 func TestCache_Get_Hit(t *testing.T) {
-	repo := mocks.NewURLRepository(t)
+	repo := mocks.NewStorage(t)
 	c, mr := newCache(t, repo)
 
 	ctx := context.Background()
@@ -59,7 +59,7 @@ func TestCache_Get_Hit(t *testing.T) {
 }
 
 func TestCache_Get_Miss_DB_OK(t *testing.T) {
-	repo := mocks.NewURLRepository(t)
+	repo := mocks.NewStorage(t)
 	c, mr := newCache(t, repo)
 
 	ctx := context.Background()
@@ -84,7 +84,7 @@ func TestCache_Get_Miss_DB_OK(t *testing.T) {
 }
 
 func TestCache_Get_Miss_DB_Error(t *testing.T) {
-	repo := mocks.NewURLRepository(t)
+	repo := mocks.NewStorage(t)
 	c, _ := newCache(t, repo)
 
 	ctx := context.Background()
@@ -104,7 +104,7 @@ func TestCache_Get_Miss_DB_Error(t *testing.T) {
 }
 
 func TestCache_Get_RedisMiss_DBFallback(t *testing.T) {
-	repo := mocks.NewURLRepository(t)
+	repo := mocks.NewStorage(t)
 	c, _ := newCache(t, repo)
 
 	ctx := context.Background()
@@ -125,7 +125,7 @@ func TestCache_Get_RedisMiss_DBFallback(t *testing.T) {
 }
 
 func TestCache_Get_Singleflight(t *testing.T) {
-	repo := mocks.NewURLRepository(t)
+	repo := mocks.NewStorage(t)
 	c, _ := newCache(t, repo)
 
 	ctx := context.Background()
