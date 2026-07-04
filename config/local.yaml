@@ -4,6 +4,8 @@ env: "local"
 # URL к базе данных
 database_url: "postgres://user-1234:12345@localhost:5433/test-db?sslmode=disable"
 
+redis_url: "localhost:6379"
+
 # Путь к локальному хранилищу данных
 storage_path: "../../storage/storage.db"
 
@@ -16,3 +18,5 @@ http_server:
 # Бизнес-логика сокращения
 alias_length: 6
 max_retries: 5
+
+ttl: 3600s
