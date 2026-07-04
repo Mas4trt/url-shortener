@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"time"
-	service "url-shortener/internal/service/url"
 	"url-shortener/pkg/logger/sl"
 
 	"golang.org/x/sync/singleflight"
@@ -13,15 +12,21 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type Storage interface {
+	Save(ctx context.Context, url string, alias string) error
+	Get(ctx context.Context, alias string) (string, error)
+	Delete(ctx context.Context, alias string) error
+}
+
 type Cache struct {
 	log   *slog.Logger
-	next  service.URLRepository
+	next  Storage
 	rdb   *redis.Client
 	ttl   time.Duration
 	group singleflight.Group
 }
 
-func New(log *slog.Logger, next service.URLRepository, rdb *redis.Client, ttl time.Duration) *Cache {
+func New(log *slog.Logger, next Storage, rdb *redis.Client, ttl time.Duration) *Cache {
 	return &Cache{
 		log:  log,
 		next: next,
