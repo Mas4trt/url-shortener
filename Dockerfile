@@ -1,37 +1,32 @@
-# --- Stage 1: Build ---
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
-# Устанавливаем необходимые зависимости для сборки CGO (если нужно)
 RUN apk add --no-cache git build-base
 
 WORKDIR /app
 
-# Кэшируем модули: копируем только go.mod и go.sum
 COPY go.mod go.sum ./
+
 RUN go mod download
 
-# Копируем исходный код
 COPY . .
 
-# Собираем бинарник с флагами оптимизации (убираем отладочную информацию)
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o main ./cmd/api/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o main ./cmd/url-shortener/main.go
 
-# --- Stage 2: Final ---
 FROM alpine:latest
 
-# Добавляем сертификаты для общения по HTTPS
 RUN apk add --no-cache ca-certificates
 
 WORKDIR /root/
 
-# Копируем только скомпилированный бинарник из билдера
+# Копируем бинарник
 COPY --from=builder /app/main .
+# Копируем конфиг и миграции
+COPY ./config/local.yaml ./config/local.yaml
 
-# Копируем конфигурационные файлы или миграции, если они нужны
-# COPY --from=builder /app/migrations ./migrations
+COPY ./migrations ./migrations
 
-# Открываем порт
+# Устанавливаем путь по умолчанию для контейнера
+ENV CONFIG_PATH=/root/config/local.yaml
+
 EXPOSE 8080
-
-# Запускаем приложение
 CMD ["./main"]

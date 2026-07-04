@@ -51,3 +51,19 @@ migrate-action:
 		-path /migrations \
 		-database postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@urlshortener-postgres:5432/${POSTGRES_DB}?sslmode=disable \
 		"$(action)"
+
+up:
+	docker compose up -d --build
+
+down:
+	docker compose down
+
+restart: down up
+
+init:
+	docker compose up -d urlshortener-postgres redis
+	docker compose up urlshortener-postgres-migrate
+	docker compose up -d app
+
+status:
+	docker compose ps
