@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,41 +13,72 @@ import (
 	"url-shortener/pkg/logger/sl"
 )
 
+const shutdownTimeout = 10 * time.Second
+
 type App struct {
 	log    *slog.Logger
 	server *http.Server
 }
 
-func New(log *slog.Logger, server *http.Server) *App {
+func New(
+	log *slog.Logger,
+	server *http.Server,
+) *App {
 	return &App{
 		log:    log,
 		server: server,
 	}
 }
 
-func (a *App) Run() error {
-	const op = "app.Run"
+func (a *App) Run(cleanup func()) error {
+	if cleanup != nil {
+		defer cleanup()
+	}
 
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(signals)
+
+	serverErr := make(chan error, 1)
 
 	go func() {
-		a.log.Info("starting HTTP server", slog.String("address", a.server.Addr))
-		if err := a.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			a.log.Error("failed to start server", sl.Err(err))
+		a.log.Info(
+			"starting HTTP server",
+			slog.String("address", a.server.Addr),
+		)
+
+		if err := a.server.ListenAndServe(); err != nil &&
+			!errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
 		}
 	}()
 
-	<-done
-	a.log.Info("stopping server gracefully...")
+	select {
+	case sig := <-signals:
+		a.log.Info(
+			"shutdown signal received",
+			slog.String("signal", sig.String()),
+		)
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	case err := <-serverErr:
+		return fmt.Errorf("http server: %w", err)
+	}
+
+	a.log.Info("shutting down HTTP server")
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(
+		context.Background(),
+		shutdownTimeout,
+	)
 	defer shutdownCancel()
 
 	if err := a.server.Shutdown(shutdownCtx); err != nil {
-		a.log.Error("failed to shutdown server gracefully", sl.Err(err))
+		a.log.Error(
+			"failed to shutdown server",
+			sl.Err(err),
+		)
 	}
 
-	a.log.Info("server stopped completely")
+	a.log.Info("server stopped")
 	return nil
 }
