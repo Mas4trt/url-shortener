@@ -1,5 +1,0 @@
-env: local
-database_url: postgres://localhost:5432/test
-
-http_server:
-  address: localhost:8080
