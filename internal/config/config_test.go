@@ -69,6 +69,7 @@ http_server:
 			yamlContent: `
 env: "prod"
 database_url: "postgres://user:pass@localhost:5432/db"
+redis_url: "localhost:6379"  
 alias_length: 8
 max_retries: 3
 http_server:
@@ -80,8 +81,10 @@ http_server:
 			wantCfg: &config.Config{
 				Env:         "prod",
 				DatabaseURL: "postgres://user:pass@localhost:5432/db",
+				RedisAddr:   "localhost:6379",
 				AliasLength: 8,
 				MaxRetries:  3,
+				TTL:         3600 * time.Second,
 				ServerConfig: config.HTTPServer{
 					Address:     "127.0.0.1:9090",
 					Timeout:     10 * time.Second,
@@ -94,17 +97,20 @@ http_server:
 			yamlContent: `
 env: "local"
 database_url: "postgres://localhost:5432/test"
+redis_url: "localhost:6379" # Добавьте сюда
 `,
 			expectPanic: false,
 			wantCfg: &config.Config{
 				Env:         "local",
 				DatabaseURL: "postgres://localhost:5432/test",
-				AliasLength: 6, // default
-				MaxRetries:  5, // default
+				RedisAddr:   "localhost:6379",
+				AliasLength: 6,
+				MaxRetries:  5,
+				TTL:         3600 * time.Second,
 				ServerConfig: config.HTTPServer{
-					Address:     "localhost:8080", // default
-					Timeout:     4 * time.Second,  // default
-					IdleTimeout: 60 * time.Second, // default
+					Address:     "localhost:8080",
+					Timeout:     4 * time.Second,
+					IdleTimeout: 60 * time.Second,
 				},
 			},
 		},
@@ -113,6 +119,7 @@ database_url: "postgres://localhost:5432/test"
 			yamlContent: `
 env: "local"
 database_url: "postgres://old:old@localhost:5432/db"
+redis_url: "localhost:6379"  # ДОБАВЬТЕ ЭТО
 alias_length: 6
 `,
 			envVars: map[string]string{
@@ -122,8 +129,10 @@ alias_length: 6
 			wantCfg: &config.Config{
 				Env:         "local",
 				DatabaseURL: "postgres://new:new@remote:5432/db",
+				RedisAddr:   "localhost:6379", // ДОБАВЬТЕ ЭТО
 				AliasLength: 6,
 				MaxRetries:  5,
+				TTL:         3600 * time.Second, // И это
 				ServerConfig: config.HTTPServer{
 					Address:     "localhost:8080",
 					Timeout:     4 * time.Second,
@@ -132,7 +141,6 @@ alias_length: 6
 			},
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envVars != nil {
