@@ -17,12 +17,11 @@ type URLRepository interface {
 }
 
 type AliasGenerator interface {
-	Generate(size int) (string, error)
+	Generate() (string, error)
 }
 
 type Config struct {
-	AliasLength int
-	MaxRetries  int
+	MaxRetries int
 }
 
 type Service struct {
@@ -33,9 +32,6 @@ type Service struct {
 }
 
 func New(log *slog.Logger, Repository URLRepository, generator AliasGenerator, cfg Config) (*Service, error) {
-	if cfg.AliasLength <= 0 {
-		return nil, fmt.Errorf("invalid config: alias length must be positive")
-	}
 	if cfg.MaxRetries <= 0 {
 		return nil, fmt.Errorf("invalid config: max retries must be positive")
 	}
@@ -107,7 +103,7 @@ func (s *Service) saveGeneratedAlias(ctx context.Context, url string) (string, e
 
 	for attempt := 1; attempt <= s.cfg.MaxRetries; attempt++ {
 
-		alias, err := s.generator.Generate(s.cfg.AliasLength)
+		alias, err := s.generator.Generate()
 		if err != nil {
 			return "", fmt.Errorf("%s: failed to generate alias: %w", op, err)
 		}
