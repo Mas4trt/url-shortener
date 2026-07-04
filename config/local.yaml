@@ -1,17 +1,14 @@
 # Окружение приложения: local, development, production
 env: "local"
 
-# URL к базе данных
-database_url: "postgres://user-1234:12345@localhost:5433/test-db?sslmode=disable"
+# # URL к базе данных
+# database_url: "postgres://user-1234:12345@localhost:5433/test-db?sslmode=disable"
 
-redis_url: "localhost:6379"
-
-# Путь к локальному хранилищу данных
-storage_path: "../../storage/storage.db"
+# redis_url: "localhost:6379"
 
 # Настройки HTTP-сервера
 http_server:
-  address: "localhost:8082"
+  address: "0.0.0.0:8080"
   timeout: 4s
   idle_timeout: 60s
 
