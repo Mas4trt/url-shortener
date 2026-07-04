@@ -30,13 +30,8 @@ func New(log *slog.Logger) func(next http.Handler) http.Handler {
 				return
 			}
 
-			entry := logger.With(slog.Group("request",
-				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
-				slog.String("remote_addr", r.RemoteAddr),
-				slog.String("user_agent", r.UserAgent()),
-			),
-			)
+			entry := logger.With(slog.Group("request", reqArgs...))
+
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			start := time.Now()
 
