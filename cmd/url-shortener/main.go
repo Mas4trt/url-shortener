@@ -16,7 +16,7 @@ func main() {
 	cfg := config.MustLoad(fetchConfigPath())
 
 	if cfg.RunMigrations {
-		if err := bootstrap.RunMigrations(cfg); err != nil {
+		if err := bootstrap.RunMigrations("file://./migrations", cfg); err != nil {
 			log.Fatal(err)
 		}
 	}
