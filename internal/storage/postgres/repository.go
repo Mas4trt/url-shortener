@@ -47,10 +47,6 @@ func New(ctx context.Context, connString string) (*PostgresRepo, error) {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("%s: ping failed: %w", op, err)
-	}
-
 	storage := &PostgresRepo{
 		pool: pool,
 	}
