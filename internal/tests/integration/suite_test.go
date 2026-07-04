@@ -1,0 +1,100 @@
+package integration
+
+import (
+	"context"
+	"net/http/httptest"
+	"testing"
+	"url-shortener/internal/bootstrap"
+	"url-shortener/internal/config"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
+	"github.com/testcontainers/testcontainers-go"
+)
+
+type IntegrationSuite struct {
+	suite.Suite
+	ctx            context.Context
+	cfg            *config.Config
+	server         *httptest.Server
+	db             *pgxpool.Pool
+	redis          *redis.Client
+	pgContainer    testcontainers.Container
+	redisContainer testcontainers.Container
+}
+
+func TestIntegrationSuite(t *testing.T) {
+	suite.Run(t, new(IntegrationSuite))
+}
+
+func (s *IntegrationSuite) SetupSuite() {
+	s.ctx = context.Background()
+
+	var dbURL string
+	var redisAddr string
+
+	s.pgContainer, s.db, dbURL =
+		startPostgres(s.ctx, s.T())
+
+	s.redisContainer, s.redis, redisAddr =
+		startRedis(s.ctx, s.T())
+
+	s.cfg = newTestConfig(
+		dbURL,
+		redisAddr,
+	)
+
+	require.NoError(
+		s.T(),
+		bootstrap.RunMigrations(s.cfg),
+	)
+
+	handler, cleanup, err :=
+		bootstrap.InitializeRouter(s.cfg)
+
+	require.NoError(s.T(), err)
+
+	s.T().Cleanup(cleanup)
+
+	s.server = httptest.NewServer(handler)
+}
+
+func (s *IntegrationSuite) TearDownSuite() {
+
+	if s.server != nil {
+		s.server.Close()
+	}
+
+	if s.redis != nil {
+		_ = s.redis.Close()
+	}
+
+	if s.db != nil {
+		s.db.Close()
+	}
+
+	if s.pgContainer != nil {
+		_ = s.pgContainer.Terminate(s.ctx)
+	}
+
+	if s.redisContainer != nil {
+		_ = s.redisContainer.Terminate(s.ctx)
+	}
+}
+
+func (s *IntegrationSuite) SetupTest() {
+
+	_, err := s.db.Exec(
+		s.ctx,
+		`TRUNCATE TABLE urlshortener.url RESTART IDENTITY CASCADE`,
+	)
+
+	require.NoError(s.T(), err)
+
+	require.NoError(
+		s.T(),
+		s.redis.FlushAll(s.ctx).Err(),
+	)
+}
