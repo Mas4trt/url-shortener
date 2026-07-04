@@ -11,12 +11,18 @@ import (
 
 const (
 	StatusOk    = "OK"
-	StatusError = "error"
+	StatusError = "Error"
 )
 
+type ValidationErrorDetail struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
 type Response struct {
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
+	Status  string                  `json:"status"`
+	Error   string                  `json:"error,omitempty"`
+	Details []ValidationErrorDetail `json:"details,omitempty"`
 }
 
 func Ok() Response {
@@ -33,22 +39,19 @@ func Error(msg string) Response {
 }
 
 func ValidationError(errs validator.ValidationErrors) Response {
-	var errMsgs []string
+	var details []ValidationErrorDetail
 
 	for _, err := range errs {
-		switch err.ActualTag() {
-		case "required":
-			errMsgs = append(errMsgs, fmt.Sprintf("field %s is a required field", err.Field()))
-		case "url":
-			errMsgs = append(errMsgs, fmt.Sprintf("field %s is not valid URL", err.Field()))
-		default:
-			errMsgs = append(errMsgs, fmt.Sprintf("field %s is not valid", err.Field()))
-		}
+		details = append(details, ValidationErrorDetail{
+			Field:   strings.ToLower(err.Field()),
+			Message: fmt.Sprintf("field %s is invalid", err.Field()),
+		})
 	}
 
 	return Response{
-		Status: StatusError,
-		Error:  strings.Join(errMsgs, ", "),
+		Status:  StatusError,
+		Error:   "validation failed",
+		Details: details,
 	}
 }
 
