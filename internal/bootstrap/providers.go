@@ -9,6 +9,7 @@ import (
 	"url-shortener/internal/config"
 	service "url-shortener/internal/service/url"
 	cache "url-shortener/internal/storage/redis"
+	"url-shortener/internal/transport/http/validation"
 	"url-shortener/pkg/random"
 
 	"github.com/go-playground/validator/v10"
@@ -45,7 +46,7 @@ func provideCacheTTL(cfg *config.Config) time.Duration {
 }
 
 func provideValidator() *validator.Validate {
-	return validator.New()
+	return validation.New()
 }
 
 func provideLogger(cfg *config.Config) *slog.Logger {
@@ -92,11 +93,11 @@ func provideLogger(cfg *config.Config) *slog.Logger {
 	}
 }
 
-func RunMigrations(cfg *config.Config) error {
+func RunMigrations(migrationsPath string, cfg *config.Config) error {
 	const op = "bootstrap.RunMigrations"
 
 	m, err := migrate.New(
-		"file://migrations",
+		migrationsPath,
 		cfg.DatabaseURL,
 	)
 	if err != nil {
