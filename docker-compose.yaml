@@ -14,6 +14,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  app:
+    build: 
+      context: ..
+      dockerfile: ./Dockerfile
+    container_name: urlshortener-app
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@urlshortener-postgres:5432/${POSTGRES_DB}?sslmode=disable
+      - REDIS_ADDR=urlshortener-redis:6379
+    depends_on:
+      urlshortener-postgres-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    ports:
+      - "8080:8080"
   
   urlshortener-postgres-migrate:
     image: migrate/migrate:v4.19.1
