@@ -69,10 +69,10 @@ make build         # Build the application
 
 🧪 Development initialization
 Brings up full local environment:
-PostgreSQL
-Redis
-Migrations
-App
+- PostgreSQL
+- Redis
+- Migrations
+- App
 ```bash
 make init
 ```
