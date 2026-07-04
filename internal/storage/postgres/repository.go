@@ -61,6 +61,10 @@ func (s *PostgresRepo) Close() {
 	}
 }
 
+func (s *PostgresRepo) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
 // Save сохраняет URL и его алиас в БД
 func (s *PostgresRepo) Save(ctx context.Context, rawURL string, alias string) error {
 	const op = "storage.postgres.Save"
