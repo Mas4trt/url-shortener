@@ -17,17 +17,17 @@ func ReadinessProbe(db Pinger, rdb *redis.Client) http.HandlerFunc {
 
 		if err := db.Ping(ctx); err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("db down"))
+			_, _ = w.Write([]byte("db down"))
 			return
 		}
 
 		if err := rdb.Ping(ctx).Err(); err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("redis down"))
+			_, _ = w.Write([]byte("redis down"))
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}
 }
