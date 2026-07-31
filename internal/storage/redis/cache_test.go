@@ -132,24 +132,39 @@ func TestCache_Get_Singleflight(t *testing.T) {
 	alias := "a1"
 	val := "https://example.com"
 
+	started := make(chan struct{})
+	release := make(chan struct{})
+
 	repo.
 		On("Get", mock.Anything, alias).
+		Run(func(args mock.Arguments) {
+			close(started)
+			<-release
+		}).
 		Return(val, nil).
 		Once()
 
-	var wg sync.WaitGroup
-	n := 10
+	const workers = 10
 
-	for i := 0; i < n; i++ {
-		wg.Add(1)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+
+	for i := 0; i < workers; i++ {
 		go func() {
 			defer wg.Done()
 
 			res, err := c.Get(ctx, alias)
+
 			assert.NoError(t, err)
 			assert.Equal(t, val, res)
 		}()
 	}
+
+	<-started
+
+	time.Sleep(10 * time.Millisecond)
+
+	close(release)
 
 	wg.Wait()
 
