@@ -56,14 +56,3 @@ func (m *MockSSO) GetRole(
 		Role: authv1.Role_ROLE_USER,
 	}, nil
 }
-
-func (m *MockAuthServer) RefreshTokens(
-	ctx context.Context,
-	req *authv1.RefreshTokensRequest,
-) (*authv1.LoginResponse, error) {
-
-	return &authv1.LoginResponse{
-		AccessToken:  "access",
-		RefreshToken: "refresh",
-	}, nil
-}
