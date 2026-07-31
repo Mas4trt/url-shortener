@@ -8,6 +8,7 @@ import (
 	"url-shortener/internal/app"
 	"url-shortener/internal/config"
 	service "url-shortener/internal/service/url"
+	"url-shortener/internal/ssoclient"
 	dbpostgres "url-shortener/internal/storage/postgres"
 	cache "url-shortener/internal/storage/redis"
 	httptransport "url-shortener/internal/transport/http"
@@ -41,6 +42,18 @@ var ServiceSet = wire.NewSet(
 	wire.Bind(new(handlers.URLService), new(*service.Service)),
 )
 
+// AuthSet описывает зависимости для аутентификации через sso: gRPC-клиент
+// для register/login/refresh/logout и локальный верификатор JWT для
+// защищённых маршрутов.
+var AuthSet = wire.NewSet(
+	provideSSOClientOptions,
+	provideSSOClient,
+	wire.Bind(new(handlers.AuthService), new(*ssoclient.Client)),
+	handlers.NewAuth,
+
+	provideAuthVerifier,
+)
+
 var HTTPSet = wire.NewSet(
 	provideValidator,
 	handlers.New,
@@ -53,6 +66,7 @@ func InitializeRouter(cfg *config.Config) (http.Handler, func(), error) {
 		provideLogger,
 		StorageSet,
 		ServiceSet,
+		AuthSet,
 		provideValidator,
 		handlers.New,
 		httptransport.NewRouter,
@@ -66,6 +80,7 @@ func InitializeApp(cfg *config.Config) (*app.App, func(), error) {
 		provideLogger,
 		StorageSet,
 		ServiceSet,
+		AuthSet,
 		HTTPSet,
 		app.New,
 	)

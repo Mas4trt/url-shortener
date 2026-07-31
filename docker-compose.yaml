@@ -26,6 +26,12 @@ services:
       - REDIS_URL=urlshortener-redis:6379
       - CONFIG_PATH=/root/config/local.yaml
       - RUN_MIGRATIONS=false # Если миграции делает отдельный сервис-контейнер
+      # sso: get these by running `make new-app NAME=url-shortener` in the
+      # sso repo. SSO_ADDR uses sso's service name because this compose
+      # project joins sso's network below — adjust if sso runs elsewhere.
+      - SSO_ADDR=${SSO_ADDR:-sso:44044}
+      - SSO_APPLICATION_ID=${SSO_APPLICATION_ID}
+      - SSO_APP_SECRET=${SSO_APP_SECRET}
     depends_on:
       urlshortener-postgres-migrate:
         condition: service_completed_successfully
@@ -33,6 +39,9 @@ services:
         condition: service_started
     ports:
       - "8080:8080"
+    networks:
+      - default
+      - sso_net
   
   urlshortener-postgres-migrate:
     image: migrate/migrate:v4.19.1
@@ -56,4 +65,11 @@ services:
     ports:
       - "6379:6379"
     restart: always
-  
+
+networks:
+  # sso's docker-compose.yaml is `name: sso`, so compose creates a network
+  # called sso_default. If sso runs on a different host, drop this network
+  # and just point SSO_ADDR at its real host:port instead.
+  sso_net:
+    name: sso_default
+    external: true

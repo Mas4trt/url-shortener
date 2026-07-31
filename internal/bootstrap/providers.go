@@ -1,13 +1,16 @@
 package bootstrap
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"time"
+	"url-shortener/internal/authn"
 	"url-shortener/internal/config"
 	service "url-shortener/internal/service/url"
+	"url-shortener/internal/ssoclient"
 	cache "url-shortener/internal/storage/redis"
 	"url-shortener/internal/transport/http/validation"
 	"url-shortener/pkg/random"
@@ -21,6 +24,8 @@ const (
 	envLocal = "local"
 	envDev   = "dev"
 	envProd  = "prod"
+
+	defaultSSODialTimeout = 5 * time.Second
 )
 
 func provideServiceConfig(cfg *config.Config) service.Config {
@@ -47,6 +52,37 @@ func provideCacheTTL(cfg *config.Config) time.Duration {
 
 func provideValidator() *validator.Validate {
 	return validation.New()
+}
+
+// provideSSOClientOptions fills in a sane default dial timeout since
+// config.SSOConfig.DialTimeout is intentionally optional (zero value is
+// valid config, not an error).
+func provideSSOClientOptions(cfg *config.Config) ssoclient.Options {
+	timeout := cfg.SSO.DialTimeout
+	if timeout == 0 {
+		timeout = defaultSSODialTimeout
+	}
+
+	return ssoclient.Options{
+		Addr:          cfg.SSO.Addr,
+		ApplicationID: cfg.SSO.ApplicationID,
+		DialTimeout:   timeout,
+	}
+}
+
+func provideSSOClient(opts ssoclient.Options) (*ssoclient.Client, func(), error) {
+	client, err := ssoclient.New(context.Background(), opts)
+	if err != nil {
+		return nil, nil, fmt.Errorf("connect to sso: %w", err)
+	}
+
+	return client, func() { _ = client.Close() }, nil
+}
+
+// provideAuthVerifier builds the local JWT verifier from the secret this
+// service was provisioned with in sso (see config.SSOConfig doc comment).
+func provideAuthVerifier(cfg *config.Config) *authn.Verifier {
+	return authn.NewVerifier(cfg.SSO.AppSecret, cfg.SSO.ApplicationID)
 }
 
 func provideLogger(cfg *config.Config) *slog.Logger {

@@ -19,6 +19,7 @@ type Config struct {
 	MaxRetries    int           `yaml:"max_retries" env-default:"5"`
 	TTL           time.Duration `yaml:"ttl" env-default:"3600s"`
 	RunMigrations bool          `yaml:"run_migrations" env:"RUN_MIGRATIONS" env-default:"false"`
+	SSO           SSOConfig     `yaml:"sso"`
 }
 
 // HTTPServer содержит настройки для запуска HTTP-сервера
@@ -26,6 +27,18 @@ type HTTPServer struct {
 	Address     string        `yaml:"address" env-default:"localhost:8080"`
 	Timeout     time.Duration `yaml:"timeout" env-default:"4s"`
 	IdleTimeout time.Duration `yaml:"idle_timeout" env-default:"60s"`
+}
+
+// SSOConfig points this service at the sso auth server. AppSecret is
+// deliberately excluded from yaml (yaml:"-") — it's a secret and should
+// only ever come from the environment / a secret manager, never a
+// committed config file. Get Addr/ApplicationID/AppSecret by provisioning
+// this service in the sso repo: `make new-app NAME=url-shortener`.
+type SSOConfig struct {
+	Addr          string        `yaml:"addr" env:"SSO_ADDR"`
+	ApplicationID uint64        `yaml:"application_id" env:"SSO_APPLICATION_ID"`
+	AppSecret     string        `yaml:"-" env:"SSO_APP_SECRET"`
+	DialTimeout   time.Duration `yaml:"dial_timeout" env:"SSO_DIAL_TIMEOUT"`
 }
 
 // MustLoad загружает конфигурацию и паникует в случае ошибки.
