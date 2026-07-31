@@ -87,6 +87,7 @@ func startRedis(
 func newTestConfig(
 	dbURL string,
 	redisAddr string,
+	ssoAddr string,
 ) *config.Config {
 
 	return &config.Config{
@@ -101,6 +102,12 @@ func newTestConfig(
 		AliasLength: 8,
 
 		TTL: time.Minute,
+
+		SSO: config.SSOConfig{
+			Addr:          ssoAddr,
+			ApplicationID: 1,
+			DialTimeout:   5 * time.Second,
+		},
 
 		ServerConfig: config.HTTPServer{
 			Address:     ":0",

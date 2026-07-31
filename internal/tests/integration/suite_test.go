@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"net"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -9,12 +10,15 @@ import (
 	"testing"
 	"url-shortener/internal/bootstrap"
 	"url-shortener/internal/config"
+	"url-shortener/internal/tests/integration/mocks"
 
+	authv1 "github.com/Mas4trt/protos/gen/go/auth/v1"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/testcontainers/testcontainers-go"
+	"google.golang.org/grpc"
 )
 
 type IntegrationSuite struct {
@@ -26,6 +30,8 @@ type IntegrationSuite struct {
 	redis          *redis.Client
 	pgContainer    testcontainers.Container
 	redisContainer testcontainers.Container
+	ssoServer      *grpc.Server
+	ssoAddr        string
 }
 
 func TestIntegrationSuite(t *testing.T) {
@@ -54,9 +60,25 @@ func (s *IntegrationSuite) SetupSuite() {
 	s.redisContainer, s.redis, redisAddr =
 		startRedis(s.ctx, s.T())
 
+	listener, err := net.Listen("tcp", "localhost:0")
+	require.NoError(s.T(), err)
+
+	s.ssoAddr = listener.Addr().String()
+
+	s.ssoServer = grpc.NewServer()
+
+	authv1.RegisterAuthServer(
+		s.ssoServer,
+		&mocks.MockSSO{},
+	)
+	go func() {
+		_ = s.ssoServer.Serve(listener)
+	}()
+
 	s.cfg = newTestConfig(
 		dbURL,
 		redisAddr,
+		s.ssoAddr,
 	)
 
 	require.NoError(
@@ -96,6 +118,10 @@ func (s *IntegrationSuite) TearDownSuite() {
 
 	if s.redisContainer != nil {
 		_ = s.redisContainer.Terminate(s.ctx)
+	}
+
+	if s.ssoServer != nil {
+		s.ssoServer.Stop()
 	}
 }
 
