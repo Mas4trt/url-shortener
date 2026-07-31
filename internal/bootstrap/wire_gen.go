@@ -12,6 +12,7 @@ import (
 	"url-shortener/internal/app"
 	"url-shortener/internal/config"
 	"url-shortener/internal/service/url"
+	"url-shortener/internal/ssoclient"
 	"url-shortener/internal/storage/postgres"
 	"url-shortener/internal/storage/redis"
 	"url-shortener/internal/transport/http"
@@ -45,8 +46,18 @@ func InitializeRouter(cfg *config.Config) (http.Handler, func(), error) {
 	}
 	validate := provideValidator()
 	handler := handlers.New(logger, serviceService, validate)
-	httpHandler := httptransport.NewRouter(logger, handler, postgresRepo, client)
+	options := provideSSOClientOptions(cfg)
+	ssoclientClient, cleanup3, err := provideSSOClient(options)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	authHandler := handlers.NewAuth(logger, ssoclientClient)
+	verifier := provideAuthVerifier(cfg)
+	httpHandler := httptransport.NewRouter(logger, handler, authHandler, verifier, postgresRepo, client)
 	return httpHandler, func() {
+		cleanup3()
 		cleanup2()
 		cleanup()
 	}, nil
@@ -77,10 +88,20 @@ func InitializeApp(cfg *config.Config) (*app.App, func(), error) {
 	}
 	validate := provideValidator()
 	handler := handlers.New(logger, serviceService, validate)
-	httpHandler := httptransport.NewRouter(logger, handler, postgresRepo, client)
+	options := provideSSOClientOptions(cfg)
+	ssoclientClient, cleanup3, err := provideSSOClient(options)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	authHandler := handlers.NewAuth(logger, ssoclientClient)
+	verifier := provideAuthVerifier(cfg)
+	httpHandler := httptransport.NewRouter(logger, handler, authHandler, verifier, postgresRepo, client)
 	server := httptransport.NewServer(cfg, httpHandler)
 	appApp := app.New(logger, server)
 	return appApp, func() {
+		cleanup3()
 		cleanup2()
 		cleanup()
 	}, nil
@@ -98,6 +119,14 @@ var StorageSet = wire.NewSet(
 // ServiceSet описывает зависимости слоя бизнес-логики
 var ServiceSet = wire.NewSet(
 	provideAliasGenerator, wire.Bind(new(service.AliasGenerator), new(*random.Generator)), provideServiceConfig, service.New, wire.Bind(new(handlers.URLService), new(*service.Service)),
+)
+
+// AuthSet описывает зависимости для аутентификации через sso: gRPC-клиент
+// для register/login/refresh/logout и локальный верификатор JWT для
+// защищённых маршрутов.
+var AuthSet = wire.NewSet(
+	provideSSOClientOptions,
+	provideSSOClient, wire.Bind(new(handlers.AuthService), new(*ssoclient.Client)), handlers.NewAuth, provideAuthVerifier,
 )
 
 var HTTPSet = wire.NewSet(
