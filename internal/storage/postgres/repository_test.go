@@ -23,9 +23,9 @@ func TestPostgresRepository_Integration(t *testing.T) {
 
 	ctx := context.Background()
 
-	pgContainer, err := tcpostgres.RunContainer(
+	pgContainer, err := tcpostgres.Run(
 		ctx,
-		testcontainers.WithImage("postgres:18.4-bookworm"),
+		"postgres:18.4-bookworm",
 		tcpostgres.WithDatabase("testdb"),
 		tcpostgres.WithUsername("user"),
 		tcpostgres.WithPassword("pass"),

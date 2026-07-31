@@ -27,7 +27,7 @@ func setupTest(t *testing.T) (*mocks.URLService, *handlers.Handler) {
 	mockService := mocks.NewURLService(t)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	v := validation.New()
+	v, _ := validation.New()
 
 	handler := handlers.New(logger, mockService, v)
 

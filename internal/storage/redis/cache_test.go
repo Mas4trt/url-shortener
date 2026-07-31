@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func newCache(t *testing.T, repo *mocks.Storage) (*cache.Cache, *miniredis.Miniredis) {
@@ -48,7 +49,7 @@ func TestCache_Get_Hit(t *testing.T) {
 	val := "https://example.com"
 
 	// preload redis
-	mr.Set(alias, val)
+	require.NoError(t, mr.Set(alias, val))
 
 	repo.AssertNotCalled(t, "Get", mock.Anything, alias)
 

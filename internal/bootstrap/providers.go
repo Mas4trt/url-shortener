@@ -51,7 +51,8 @@ func provideCacheTTL(cfg *config.Config) time.Duration {
 }
 
 func provideValidator() *validator.Validate {
-	return validation.New()
+	validate, _ := validation.New()
+	return validate
 }
 
 // provideSSOClientOptions fills in a sane default dial timeout since

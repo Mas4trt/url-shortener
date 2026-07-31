@@ -74,7 +74,7 @@ func TestLoggerMiddleware(t *testing.T) {
 
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.handlerStatus)
-				w.Write([]byte("response body"))
+				_, _ = w.Write([]byte("response body"))
 			})
 
 			handler := mw(nextHandler)

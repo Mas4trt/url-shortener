@@ -1,4 +1,3 @@
-// Package ssoclient talks to the central sso service over gRPC to
 package ssoclient
 
 import (
@@ -42,38 +41,31 @@ type Client struct {
 }
 
 func New(ctx context.Context, opts Options) (*Client, error) {
-	if opts.Addr == "" {
-		return nil, errors.New("ssoclient: Addr is required")
-	}
-	if opts.ApplicationID == 0 {
-		return nil, errors.New("ssoclient: ApplicationID is required")
-	}
-	if opts.DialTimeout == 0 {
-		opts.DialTimeout = 5 * time.Second
-	}
-
 	creds := opts.TLS
+
 	if creds == nil {
 		creds = insecure.NewCredentials()
 	}
 
-	dialCtx, cancel := context.WithTimeout(ctx, opts.DialTimeout)
-	defer cancel()
-
-	conn, err := grpc.DialContext(dialCtx, opts.Addr,
+	conn, err := grpc.NewClient(
+		opts.Addr,
 		grpc.WithTransportCredentials(creds),
-		grpc.WithBlock(),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                10 * time.Second,
 			Timeout:             3 * time.Second,
 			PermitWithoutStream: true,
 		}),
 	)
+
 	if err != nil {
-		return nil, fmt.Errorf("ssoclient: dial %s: %w", opts.Addr, err)
+		return nil, fmt.Errorf("ssoclient: create client: %w", err)
 	}
 
-	return &Client{conn: conn, api: authv1.NewAuthClient(conn), appID: opts.ApplicationID}, nil
+	return &Client{
+		conn:  conn,
+		api:   authv1.NewAuthClient(conn),
+		appID: opts.ApplicationID,
+	}, nil
 }
 
 func (c *Client) Close() error {

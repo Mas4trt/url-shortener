@@ -8,12 +8,14 @@ import (
 
 var aliasRegexp = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
-func New() *validator.Validate {
+func New() (*validator.Validate, error) {
 	v := validator.New()
 
-	v.RegisterValidation("alias", func(fl validator.FieldLevel) bool {
+	if err := v.RegisterValidation("alias", func(fl validator.FieldLevel) bool {
 		return aliasRegexp.MatchString(fl.Field().String())
-	})
+	}); err != nil {
+		return nil, err
+	}
 
-	return v
+	return v, nil
 }
