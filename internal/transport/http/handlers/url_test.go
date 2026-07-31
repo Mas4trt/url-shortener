@@ -12,13 +12,13 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"url-shortener/internal/domain"
 	"url-shortener/internal/transport/http/handlers"
 	"url-shortener/internal/transport/http/handlers/mocks"
+	"url-shortener/internal/transport/http/validation"
 )
 
 // setupTest инициализирует все необходимые компоненты для тестов
@@ -27,7 +27,7 @@ func setupTest(t *testing.T) (*mocks.URLService, *handlers.Handler) {
 	mockService := mocks.NewURLService(t)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	v := validator.New()
+	v := validation.New()
 
 	handler := handlers.New(logger, mockService, v)
 
