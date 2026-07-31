@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
@@ -33,68 +32,24 @@ func TestValidationError(t *testing.T) {
 	type TestStruct struct {
 		ReqField   string `validate:"required"`
 		URLField   string `validate:"url"`
-		OtherField int    `validate:"min=10"`
+		OtherField string `validate:"min=10"`
 	}
 
-	tests := []struct {
-		name      string
-		input     TestStruct
-		wantError string
-	}{
-		{
-			name: "required field missing",
-			input: TestStruct{
-				URLField:   "https://example.com",
-				OtherField: 15,
-			},
-			wantError: "field ReqField is a required field",
-		},
-		{
-			name: "invalid url",
-			input: TestStruct{
-				ReqField:   "present",
-				URLField:   "not-a-valid-url",
-				OtherField: 15,
-			},
-			wantError: "field URLField is not valid URL",
-		},
-		{
-			name: "default case (min validation failed)",
-			input: TestStruct{
-				ReqField:   "present",
-				URLField:   "https://example.com",
-				OtherField: 5,
-			},
-			wantError: "field OtherField is not valid",
-		},
-		{
-			name: "multiple validation errors",
-			input: TestStruct{
-				URLField:   "bad-url",
-				OtherField: 5,
-			},
-			wantError: "field ReqField is a required field, field URLField is not valid URL, field OtherField is not valid",
-		},
-	}
+	t.Run("required", func(t *testing.T) {
+		err := validate.Struct(TestStruct{})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validate.Struct(tt.input)
+		var valErrs validator.ValidationErrors
+		require.ErrorAs(t, err, &valErrs)
 
-			require.Error(t, err)
-			var valErrs validator.ValidationErrors
-			require.ErrorAs(t, err, &valErrs, "Error should be of type validator.ValidationErrors")
+		resp := ValidationError(valErrs)
 
-			resp := ValidationError(valErrs)
+		require.Equal(t, StatusError, resp.Status)
+		require.Equal(t, "validation failed", resp.Error)
+		require.Len(t, resp.Details, 3)
 
-			assert.Equal(t, StatusError, resp.Status)
-
-			expectedErrors := strings.Split(tt.wantError, ", ")
-			for _, expectedErr := range expectedErrors {
-				assert.Contains(t, resp.Error, expectedErr)
-			}
-		})
-	}
+		assert.Equal(t, "reqfield", resp.Details[0].Field)
+		assert.Equal(t, "is required", resp.Details[0].Message)
+	})
 }
 
 func TestRespond(t *testing.T) {

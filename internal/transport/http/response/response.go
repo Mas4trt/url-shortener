@@ -39,12 +39,12 @@ func Error(msg string) Response {
 }
 
 func ValidationError(errs validator.ValidationErrors) Response {
-	var details []ValidationErrorDetail
+	details := make([]ValidationErrorDetail, 0, len(errs))
 
 	for _, err := range errs {
 		details = append(details, ValidationErrorDetail{
 			Field:   strings.ToLower(err.Field()),
-			Message: fmt.Sprintf("field %s is invalid", err.Field()),
+			Message: validationMessage(err),
 		})
 	}
 
@@ -52,6 +52,28 @@ func ValidationError(errs validator.ValidationErrors) Response {
 		Status:  StatusError,
 		Error:   "validation failed",
 		Details: details,
+	}
+}
+
+func validationMessage(err validator.FieldError) string {
+	switch err.Tag() {
+	case "required":
+		return "is required"
+
+	case "url":
+		return "must be a valid URL"
+
+	case "min":
+		return fmt.Sprintf("must be at least %s characters", err.Param())
+
+	case "max":
+		return fmt.Sprintf("must be at most %s characters", err.Param())
+
+	case "alias":
+		return "may contain only letters, numbers, '-' and '_'"
+
+	default:
+		return "is invalid"
 	}
 }
 
