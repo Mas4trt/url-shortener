@@ -67,3 +67,27 @@ init:
 
 status:
 	docker compose ps
+
+# --- previously missing: README documented these, Makefile didn't have them ---
+
+build:
+	go build -o bin/url-shortener ./cmd/url-shortener
+
+# Unit tests only (fast, no docker). Integration tests under
+# internal/tests/integration and internal/storage/postgres need a docker
+# daemon (testcontainers) — run those with `make test-integration`.
+test:
+	go test -race -cover -short ./...
+
+test-integration:
+	go test -race -v ./internal/tests/integration/... ./internal/storage/postgres/...
+
+lint:
+	@fmt_out="$$(gofmt -l .)"; \
+	if [ -n "$$fmt_out" ]; then \
+		echo "not gofmt'ed:"; echo "$$fmt_out"; exit 1; \
+	fi
+	go vet ./...
+
+fmt:
+	gofmt -w .
