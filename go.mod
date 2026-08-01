@@ -1,6 +1,6 @@
 module url-shortener
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/Mas4trt/protos v0.0.1-fix.5
