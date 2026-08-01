@@ -1,6 +1,3 @@
-// Package authn verifies access tokens issued by sso without calling sso
-// on every request: sso signs access tokens (HS256) with the same secret
-// this app was provisioned with, so we can check the signature locally.
 package authn
 
 import (
@@ -13,6 +10,16 @@ import (
 var (
 	ErrMissingToken = errors.New("authn: missing bearer token")
 	ErrInvalidToken = errors.New("authn: invalid or expired token")
+
+	// ErrMissingApplicationID/ErrMissingSecret guard against a specific
+	// misconfiguration: if SSO_APPLICATION_ID is left unset, applicationID
+	// defaults to 0. A token whose app_id claim is also absent/zero would
+	// then pass the "app_id matches" check below — i.e. a config mistake
+	// silently turns into an authentication bypass instead of a boot
+	// failure. Refusing to construct a Verifier without both values closes
+	// that gap.
+	ErrMissingApplicationID = errors.New("authn: application id must be non-zero")
+	ErrMissingSecret        = errors.New("authn: app secret must not be empty")
 )
 
 // Claims mirrors what sso puts in the access token (see sso's pkg/jwt).
@@ -28,9 +35,17 @@ type Verifier struct {
 
 // NewVerifier takes the app secret handed out when this service was
 // provisioned in sso (`make new-app` in the sso repo) and the matching
-// application_id.
-func NewVerifier(secret string, applicationID uint64) *Verifier {
-	return &Verifier{secret: []byte(secret), applicationID: applicationID}
+// application_id. It returns an error rather than constructing a Verifier
+// that would silently under-validate tokens.
+func NewVerifier(secret string, applicationID uint64) (*Verifier, error) {
+	if applicationID == 0 {
+		return nil, ErrMissingApplicationID
+	}
+	if secret == "" {
+		return nil, ErrMissingSecret
+	}
+
+	return &Verifier{secret: []byte(secret), applicationID: applicationID}, nil
 }
 
 func (v *Verifier) Verify(tokenStr string) (Claims, error) {

@@ -16,14 +16,12 @@ import (
 	"url-shortener/internal/storage/mocks"
 )
 
-// defaultTestConfig возвращает стандартный конфиг для тестов
 func defaultTestConfig() service.Config {
 	return service.Config{
 		MaxRetries: 2,
 	}
 }
 
-// setupTest инициализирует моки, логгер и сервис
 func setupTest(t *testing.T, cfg service.Config) (*mocks.URLRepository, *amocks.AliasGenerator, *service.Service) {
 	t.Helper()
 	repo := mocks.NewURLRepository(t)
@@ -68,6 +66,7 @@ func TestNewService(t *testing.T) {
 			srv, err := service.New(logger, repo, gen, tt.cfg)
 			if tt.expectError {
 				require.Error(t, err)
+				require.ErrorIs(t, err, service.ErrInvalidConfig, "config errors should be identifiable via errors.Is")
 				require.Nil(t, srv)
 			} else {
 				require.NoError(t, err)
@@ -94,7 +93,15 @@ func TestService_Save(t *testing.T) {
 			url:   "",
 			alias: "",
 			mockBehavior: func(repo *mocks.URLRepository, gen *amocks.AliasGenerator, cfg service.Config) {
-				// Моки не должны вызываться
+				// Mocks must not be called.
+			},
+			expectedErr: domain.ErrInvalidURL,
+		},
+		{
+			name:  "Whitespace-only URL is treated as empty",
+			url:   "   ",
+			alias: "",
+			mockBehavior: func(repo *mocks.URLRepository, gen *amocks.AliasGenerator, cfg service.Config) {
 			},
 			expectedErr: domain.ErrInvalidURL,
 		},
@@ -142,10 +149,8 @@ func TestService_Save(t *testing.T) {
 			url:   testURL,
 			alias: "",
 			mockBehavior: func(repo *mocks.URLRepository, gen *amocks.AliasGenerator, cfg service.Config) {
-				// Попытка 1: Коллизия
 				gen.On("Generate").Return("colli", nil).Once()
 				repo.On("Save", mock.Anything, testURL, "colli").Return(domain.ErrURLExist).Once()
-				// Попытка 2: Успех
 				gen.On("Generate").Return("rnd02", nil).Once()
 				repo.On("Save", mock.Anything, testURL, "rnd02").Return(nil).Once()
 			},
@@ -157,7 +162,6 @@ func TestService_Save(t *testing.T) {
 			url:   testURL,
 			alias: "",
 			mockBehavior: func(repo *mocks.URLRepository, gen *amocks.AliasGenerator, cfg service.Config) {
-				// Все попытки (cfg.MaxRetries) возвращают коллизию
 				gen.On("Generate").Return("colli", nil).Times(cfg.MaxRetries)
 				repo.On("Save", mock.Anything, testURL, mock.Anything).Return(domain.ErrURLExist).Times(cfg.MaxRetries)
 			},
@@ -197,6 +201,26 @@ func TestService_Save(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestService_Save_ContextCanceled ensures the retry loop bails out
+// immediately once the caller's context is canceled, instead of burning
+// through every remaining retry attempt against a repository that may
+// itself be slow to fail.
+func TestService_Save_ContextCanceled(t *testing.T) {
+	repo, gen, srv := setupTest(t, service.Config{MaxRetries: 5})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	alias, err := srv.Save(ctx, "https://example.com", "")
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, alias)
+
+	gen.AssertNotCalled(t, "Generate")
+	repo.AssertNotCalled(t, "Save", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestService_Get(t *testing.T) {
