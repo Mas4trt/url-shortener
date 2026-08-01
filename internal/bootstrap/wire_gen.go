@@ -44,7 +44,12 @@ func InitializeRouter(cfg *config.Config) (http.Handler, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	validate := provideValidator()
+	validate, err := provideValidator()
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	handler := handlers.New(logger, serviceService, validate)
 	options := provideSSOClientOptions(cfg)
 	ssoclientClient, cleanup3, err := provideSSOClient(options)
@@ -54,7 +59,13 @@ func InitializeRouter(cfg *config.Config) (http.Handler, func(), error) {
 		return nil, nil, err
 	}
 	authHandler := handlers.NewAuth(logger, ssoclientClient)
-	verifier := provideAuthVerifier(cfg)
+	verifier, err := provideAuthVerifier(cfg)
+	if err != nil {
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	httpHandler := httptransport.NewRouter(logger, handler, authHandler, verifier, postgresRepo, client)
 	return httpHandler, func() {
 		cleanup3()
@@ -86,7 +97,12 @@ func InitializeApp(cfg *config.Config) (*app.App, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	validate := provideValidator()
+	validate, err := provideValidator()
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	handler := handlers.New(logger, serviceService, validate)
 	options := provideSSOClientOptions(cfg)
 	ssoclientClient, cleanup3, err := provideSSOClient(options)
@@ -96,7 +112,13 @@ func InitializeApp(cfg *config.Config) (*app.App, func(), error) {
 		return nil, nil, err
 	}
 	authHandler := handlers.NewAuth(logger, ssoclientClient)
-	verifier := provideAuthVerifier(cfg)
+	verifier, err := provideAuthVerifier(cfg)
+	if err != nil {
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	httpHandler := httptransport.NewRouter(logger, handler, authHandler, verifier, postgresRepo, client)
 	server := httptransport.NewServer(cfg, httpHandler)
 	appApp := app.New(logger, server)

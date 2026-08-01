@@ -50,9 +50,8 @@ func provideCacheTTL(cfg *config.Config) time.Duration {
 	return cfg.TTL
 }
 
-func provideValidator() *validator.Validate {
-	validate, _ := validation.New()
-	return validate
+func provideValidator() (*validator.Validate, error) {
+	return validation.New()
 }
 
 // provideSSOClientOptions fills in a sane default dial timeout since
@@ -82,8 +81,11 @@ func provideSSOClient(opts ssoclient.Options) (*ssoclient.Client, func(), error)
 
 // provideAuthVerifier builds the local JWT verifier from the secret this
 // service was provisioned with in sso (see config.SSOConfig doc comment).
-func provideAuthVerifier(cfg *config.Config) *authn.Verifier {
-	return authn.NewVerifier(cfg.SSO.AppSecret, cfg.SSO.ApplicationID)
+func provideAuthVerifier(cfg *config.Config) (*authn.Verifier, error) {
+	return authn.NewVerifier(
+		cfg.SSO.AppSecret,
+		cfg.SSO.ApplicationID,
+	)
 }
 
 func provideLogger(cfg *config.Config) *slog.Logger {

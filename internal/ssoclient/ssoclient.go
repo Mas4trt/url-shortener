@@ -10,6 +10,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -17,9 +18,22 @@ import (
 )
 
 var (
-	ErrInvalidCredentials = errors.New("sso: invalid email or password")
-	ErrUserExists         = errors.New("sso: user already exists")
-	ErrRefreshInvalid     = errors.New("sso: refresh token invalid or expired")
+	ErrInvalidCredentials   = errors.New("sso: invalid email or password")
+	ErrUserExists           = errors.New("sso: user already exists")
+	ErrRefreshInvalid       = errors.New("sso: refresh token invalid or expired")
+	ErrMissingApplicationID = errors.New("ssoclient: application id must be non-zero")
+	ErrMissingAddress       = errors.New("ssoclient: address must not be empty")
+)
+
+// defaultDialTimeout is used when Options.DialTimeout is unset.
+// defaultRPCTimeout bounds each individual call — the HTTP server's own
+// read/write timeouts already provide an outer bound, but ssoclient may
+// gain non-HTTP callers later, so this matches the same defense-in-depth
+// pattern used in storage/postgres/repository.go rather than relying on
+// that alone.
+const (
+	defaultDialTimeout = 5 * time.Second
+	defaultRPCTimeout  = 5 * time.Second
 )
 
 type Options struct {
@@ -27,7 +41,8 @@ type Options struct {
 	Addr string
 	// ApplicationID is this app's row in sso's `apps` table.
 	ApplicationID uint64
-	// DialTimeout bounds the initial connection attempt.
+	// DialTimeout bounds how long New waits for the connection to become
+	// ready before giving up. Defaults to defaultDialTimeout if zero.
 	DialTimeout time.Duration
 	// TLS, if nil, connects insecurely — fine on a private network/service
 	// mesh, not fine over the public internet.
@@ -40,9 +55,17 @@ type Client struct {
 	appID uint64
 }
 
+// New creates a client and, unlike a bare grpc.NewClient (which connects
+// lazily on first RPC), actively waits — up to opts.DialTimeout or ctx's
+// deadline, whichever is sooner — for the connection to become ready.
+// This makes an unreachable or misconfigured sso a startup failure
+// instead of a surprise on the first login request in production.
 func New(ctx context.Context, opts Options) (*Client, error) {
-	creds := opts.TLS
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
 
+	creds := opts.TLS
 	if creds == nil {
 		creds = insecure.NewCredentials()
 	}
@@ -56,9 +79,22 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 			PermitWithoutStream: true,
 		}),
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("ssoclient: create client: %w", err)
+	}
+
+	timeout := opts.DialTimeout
+	if timeout <= 0 {
+		timeout = defaultDialTimeout
+	}
+
+	connectCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	conn.Connect()
+	if err := waitUntilReady(connectCtx, conn); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("ssoclient: connect to %s: %w", opts.Addr, err)
 	}
 
 	return &Client{
@@ -68,11 +104,28 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 	}, nil
 }
 
+// waitUntilReady blocks until conn reports Ready, or ctx is done.
+func waitUntilReady(ctx context.Context, conn *grpc.ClientConn) error {
+	for {
+		state := conn.GetState()
+		if state == connectivity.Ready {
+			return nil
+		}
+
+		if !conn.WaitForStateChange(ctx, state) {
+			return ctx.Err()
+		}
+	}
+}
+
 func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
 func (c *Client) Register(ctx context.Context, email, password string) (userID uint64, err error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
+	defer cancel()
+
 	resp, err := c.api.Register(ctx, &authv1.RegisterRequest{Email: email, Password: password})
 	if err != nil {
 		return 0, mapErr(err)
@@ -81,6 +134,9 @@ func (c *Client) Register(ctx context.Context, email, password string) (userID u
 }
 
 func (c *Client) Login(ctx context.Context, email, password string) (access, refresh string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
+	defer cancel()
+
 	resp, err := c.api.Authenticate(ctx, &authv1.LoginRequest{
 		Email:         email,
 		Password:      password,
@@ -93,6 +149,9 @@ func (c *Client) Login(ctx context.Context, email, password string) (access, ref
 }
 
 func (c *Client) RefreshTokens(ctx context.Context, refreshToken string) (access, refresh string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
+	defer cancel()
+
 	resp, err := c.api.RefreshTokens(ctx, &authv1.RefreshTokensRequest{
 		RefreshToken:  refreshToken,
 		ApplicationId: c.appID,
@@ -104,6 +163,9 @@ func (c *Client) RefreshTokens(ctx context.Context, refreshToken string) (access
 }
 
 func (c *Client) Logout(ctx context.Context, refreshToken string) error {
+	ctx, cancel := context.WithTimeout(ctx, defaultRPCTimeout)
+	defer cancel()
+
 	_, err := c.api.Logout(ctx, &authv1.LogoutRequest{RefreshToken: refreshToken})
 	return mapErr(err)
 }
@@ -124,6 +186,18 @@ func mapErr(err error) error {
 	case codes.Unauthenticated:
 		return fmt.Errorf("%w: %s", ErrRefreshInvalid, st.Message())
 	default:
-		return err
+		return fmt.Errorf("sso rpc: %w", err)
 	}
+}
+
+func (o Options) Validate() error {
+	if o.Addr == "" {
+		return ErrMissingAddress
+	}
+
+	if o.ApplicationID == 0 {
+		return ErrMissingApplicationID
+	}
+
+	return nil
 }
