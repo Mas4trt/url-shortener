@@ -47,6 +47,26 @@ jobs:
           install-mode: goinstall
           args: --timeout=3m
 
+  vulncheck:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...
 
   unit-test:
     name: Unit tests
@@ -67,12 +87,27 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run unit tests
-        run: go test -race -cover -short ./...
+      - name: Run unit tests with coverage
+        run: go test -race -short -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Report coverage
+        run: |
+          total=$(go tool cover -func=coverage.out | tail -n1 | awk '{print $3}' | tr -d '%')
+          echo "Total coverage: ${total}%"
+          echo "COVERAGE=${total}" >> "$GITHUB_ENV"
+          # Adjust the floor as coverage genuinely improves — the point is
+          # to catch a regression, not to gate on an arbitrary target from
+          # day one.
+          awk -v cov="$total" 'BEGIN { if (cov < 50) { print "coverage below 50% floor"; exit 1 } }'
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
 
       - name: Build application
         run: go build ./...
-
 
   integration-test:
     name: Integration tests
@@ -97,6 +132,6 @@ jobs:
         run: docker info
 
       - name: Run integration tests
-        run: go test -race -v ./internal/storage/...
+        run: go test -race -v ./internal/storage/... ./internal/tests/integration/...
         env:
           TESTCONTAINERS_RYUK_DISABLED: "false"

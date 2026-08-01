@@ -12,6 +12,9 @@ linters:
     - bodyclose
     - unconvert
     - misspell
+    - unparam    # catches unused function parameters/returns — cheap to fix, easy to miss in review
+    - prealloc   # flags slices that could be preallocated, relevant given hot paths like alias generation
+    - gocritic   # broad diagnostics (e.g. wrong sprintf verbs, redundant nil checks)
 
 linters-settings:
   errcheck:
@@ -23,3 +26,4 @@ issues:
     - path: _test\.go
       linters:
         - gosec
+        - unparam
