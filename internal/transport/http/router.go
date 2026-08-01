@@ -3,15 +3,27 @@ package httptransport
 import (
 	"log/slog"
 	"net/http"
+	"time"
 	"url-shortener/internal/authn"
 	dbpostgres "url-shortener/internal/storage/postgres"
 	"url-shortener/internal/transport/http/handlers"
 	logger "url-shortener/internal/transport/http/middleware"
 	authmw "url-shortener/internal/transport/http/middleware/auth"
+	"url-shortener/internal/transport/http/middleware/ratelimit"
+	"url-shortener/internal/transport/http/middleware/reqid"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/redis/go-redis/v9"
+)
+
+// writeEndpointRate/writeEndpointBurst bound how fast a single client can
+// create/delete short links. Generous enough for normal use, tight enough
+// to blunt a naive scripted flood; tune per traffic profile.
+const (
+	writeEndpointRate  = 5.0 // requests/sec
+	writeEndpointBurst = 20.0
+	limiterEntryTTL    = 10 * time.Minute
 )
 
 func NewRouter(
@@ -25,6 +37,7 @@ func NewRouter(
 	router := chi.NewRouter()
 
 	router.Use(middleware.RequestID)
+	router.Use(reqid.Propagate) // makes request ID available to service/storage logs too
 	router.Use(logger.New(log))
 	router.Use(middleware.Recoverer)
 
@@ -39,9 +52,12 @@ func NewRouter(
 	// Redirect stays public — anyone with a short link can follow it.
 	router.Get("/{alias}", handler.Get)
 
-	// Creating/deleting links requires a valid sso access token.
+	// Creating/deleting links requires a valid sso access token, plus a
+	// per-IP rate limit since these are the write/expensive paths.
+	writeLimiter := ratelimit.New(writeEndpointRate, writeEndpointBurst, limiterEntryTTL)
 	router.Group(func(r chi.Router) {
 		r.Use(authmw.RequireAuth(verifier))
+		r.Use(writeLimiter.Middleware)
 		r.Post("/url", handler.Save)
 		r.Delete("/{alias}", handler.Delete)
 	})

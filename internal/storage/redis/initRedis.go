@@ -10,16 +10,30 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// Client tuning, kept as constants for the same reason as the Postgres
+// pool settings — see storage/postgres/initPostgres.go's TODO. Promote
+// to config.Config together with those once the wire graph is safe to
+// regenerate.
+const (
+	dialTimeout  = 3 * time.Second
+	readTimeout  = 2 * time.Second
+	writeTimeout = 2 * time.Second
+	pingTimeout  = 3 * time.Second
+)
+
 func InitRedis(log *slog.Logger, addr string) (*redis.Client, func(), error) {
 	const op = "redis.InitRedis"
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:         addr,
 		PoolSize:     10,
 		MinIdleConns: 2,
+		DialTimeout:  dialTimeout,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 	})
 
 	if err := rdb.Ping(ctx).Err(); err != nil {

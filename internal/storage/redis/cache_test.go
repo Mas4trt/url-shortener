@@ -48,7 +48,6 @@ func TestCache_Get_Hit(t *testing.T) {
 	alias := "a1"
 	val := "https://example.com"
 
-	// preload redis
 	require.NoError(t, mr.Set(alias, val))
 
 	repo.AssertNotCalled(t, "Get", mock.Anything, alias)
@@ -77,7 +76,6 @@ func TestCache_Get_Miss_DB_OK(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, val, res)
 
-	// Redis must be filled
 	v, _ := mr.Get(alias)
 	assert.Equal(t, val, v)
 
@@ -170,4 +168,40 @@ func TestCache_Get_Singleflight(t *testing.T) {
 	wg.Wait()
 
 	repo.AssertNumberOfCalls(t, "Get", 1)
+}
+
+// TestCache_Breaker_SkipsRedisAfterFailure verifies that once Redis
+// becomes unreachable, the cache still serves requests correctly via the
+// DB fallback — both immediately (the call that discovers the failure)
+// and on subsequent calls (the breaker-open path that skips Redis
+// entirely rather than retrying a dead connection on every request).
+func TestCache_Breaker_SkipsRedisAfterFailure(t *testing.T) {
+	repo := mocks.NewStorage(t)
+	c, mr := newCache(t, repo)
+
+	ctx := context.Background()
+	alias := "a1"
+	val := "https://example.com"
+
+	mr.Close() // simulate Redis becoming unreachable
+
+	repo.On("Get", mock.Anything, alias).Return(val, nil)
+
+	res, err := c.Get(ctx, alias)
+	require.NoError(t, err)
+	require.Equal(t, val, res)
+
+	// Breaker should now be open: this call must not hang or error trying
+	// to reach the now-closed Redis instance.
+	res, err = c.Get(ctx, alias)
+	require.NoError(t, err)
+	require.Equal(t, val, res)
+
+	repo.On("Save", mock.Anything, "https://other.example.com", "a2").Return(nil).Once()
+	require.NoError(t, c.Save(ctx, "https://other.example.com", "a2"),
+		"Save must succeed even though the cache write is skipped")
+
+	repo.On("Delete", mock.Anything, "a2").Return(nil).Once()
+	require.NoError(t, c.Delete(ctx, "a2"),
+		"Delete must succeed even though the cache delete is skipped")
 }

@@ -15,8 +15,14 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// maxSaveRequestBytes caps the JSON body accepted by POST /url. Without a
+// cap, render.DecodeJSON will happily read an unbounded body into memory
+// off an unauthenticated-until-parsed request — an easy memory-exhaustion
+// vector. 1 MiB is generous for a {url, alias} payload.
+const maxSaveRequestBytes = 1 << 20 // 1 MiB
+
 type SaveRequest struct {
-	URL   string `json:"url" validate:"required,url"`
+	URL   string `json:"url" validate:"required,url,url_scheme"`
 	Alias string `json:"alias" validate:"omitempty,min=4,max=20,alias"`
 }
 
@@ -25,7 +31,9 @@ type SaveResponse struct {
 	Alias string `json:"alias,omitempty"`
 }
 
-// URLService — интерфейс, который хэндлер ожидает от бизнес-логики
+// URLService is what the handler expects from the business-logic layer —
+// satisfied by *service.Service. Kept here (not in the service package)
+// so the service package doesn't need to know it's used over HTTP.
 type URLService interface {
 	Save(ctx context.Context, url string, alias string) (string, error)
 	Get(ctx context.Context, alias string) (string, error)
@@ -48,15 +56,17 @@ func New(log *slog.Logger, service URLService, validator *validator.Validate) *H
 	}
 }
 
-// Save выполняет обработку POST /url
+// Save handles POST /url.
 func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.Handler.Save"
 
 	log := h.logger(r, op)
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxSaveRequestBytes)
+
 	var req SaveRequest
 	if err := render.DecodeJSON(r.Body, &req); err != nil {
-		log.Error("failed to decode request body", sl.Err(err))
+		log.Debug("failed to decode request body", sl.Err(err))
 		response.Respond(w, r, http.StatusBadRequest, response.Error("failed to decode request"))
 		return
 	}
@@ -64,7 +74,7 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	if err := h.validator.Struct(req); err != nil {
 		var validationErr validator.ValidationErrors
 		if errors.As(err, &validationErr) {
-			log.Error("invalid request", sl.Err(err))
+			log.Debug("invalid request", sl.Err(err))
 			response.Respond(w, r, http.StatusBadRequest, response.ValidationError(validationErr))
 			return
 		}
@@ -74,14 +84,12 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	alias, err := h.service.Save(r.Context(), req.URL, req.Alias)
-	switch {
-	case errors.Is(err, domain.ErrURLExist):
-		log.Debug("url already exists", slog.String("alias", req.Alias))
-		response.Respond(w, r, http.StatusConflict, response.Error("url already exists"))
-		return
-	case err != nil:
-		log.Error("failed add url", sl.Err(err))
-		response.Respond(w, r, http.StatusInternalServerError, response.Error("failed add url"))
+	if err != nil {
+		response.RespondError(w, r, log, err,
+			http.StatusInternalServerError, "failed add url",
+			response.Case(domain.ErrURLExist, http.StatusConflict, "url already exists"),
+			response.Case(domain.ErrInvalidURL, http.StatusBadRequest, "url is required"),
+		)
 		return
 	}
 
@@ -93,6 +101,7 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Get handles GET /{alias} — resolves and 302-redirects to the target URL.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.Handler.Get"
 
@@ -106,14 +115,11 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resURL, err := h.service.Get(r.Context(), alias)
-	switch {
-	case errors.Is(err, domain.ErrURLNotFound):
-		log.Debug("url not found", slog.String("alias", alias))
-		response.Respond(w, r, http.StatusNotFound, response.Error("not found"))
-		return
-	case err != nil:
-		log.Error("failed to get url", sl.Err(err))
-		response.Respond(w, r, http.StatusInternalServerError, response.Error("internal error"))
+	if err != nil {
+		response.RespondError(w, r, log, err,
+			http.StatusInternalServerError, "internal error",
+			response.Case(domain.ErrURLNotFound, http.StatusNotFound, "not found"),
+		)
 		return
 	}
 
@@ -122,6 +128,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, resURL, http.StatusFound)
 }
 
+// Delete handles DELETE /{alias}.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.Handler.Delete"
 
@@ -134,14 +141,11 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.service.Delete(r.Context(), alias)
-	switch {
-	case errors.Is(err, domain.ErrURLNotFound):
-		response.Respond(w, r, http.StatusNotFound, response.Error("not found"))
-		return
-	case err != nil:
-		log.Error("failed to delete url", sl.Err(err))
-		response.Respond(w, r, http.StatusInternalServerError, response.Error("internal error"))
+	if err := h.service.Delete(r.Context(), alias); err != nil {
+		response.RespondError(w, r, log, err,
+			http.StatusInternalServerError, "internal error",
+			response.Case(domain.ErrURLNotFound, http.StatusNotFound, "not found"),
+		)
 		return
 	}
 

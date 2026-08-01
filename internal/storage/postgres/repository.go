@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 	"url-shortener/internal/domain"
 
 	"github.com/jackc/pgx/v5"
@@ -32,13 +33,21 @@ const (
 const (
 	pgUniqueViolation  = "23505"
 	urlAliasConstraint = "url_alias_key"
+
+	// defaultQueryTimeout bounds a single query regardless of what
+	// deadline (if any) the caller's context already carries — nested
+	// context.WithTimeout takes the earlier of the two deadlines, so this
+	// only ever tightens the bound, never loosens it.
+	defaultQueryTimeout = 5 * time.Second
 )
 
 type PostgresRepo struct {
 	pool *pgxpool.Pool
 }
 
-// New инициализирует базу данных и создает необходимые таблицы
+// New is a lightweight constructor for tests and one-off tooling — it
+// skips the pool tuning InitPostgres applies for production traffic.
+// Prefer InitPostgres for anything long-running.
 func New(ctx context.Context, connString string) (*PostgresRepo, error) {
 	const op = "storage.postgres.New"
 
@@ -69,6 +78,9 @@ func (s *PostgresRepo) Ping(ctx context.Context) error {
 func (s *PostgresRepo) Save(ctx context.Context, rawURL string, alias string) error {
 	const op = "storage.postgres.Save"
 
+	ctx, cancel := context.WithTimeout(ctx, defaultQueryTimeout)
+	defer cancel()
+
 	tag, err := s.pool.Exec(ctx, insertURLQuery, rawURL, alias)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -91,11 +103,13 @@ func (s *PostgresRepo) Save(ctx context.Context, rawURL string, alias string) er
 func (s *PostgresRepo) Get(ctx context.Context, alias string) (string, error) {
 	const op = "storage.postgres.Get"
 
+	ctx, cancel := context.WithTimeout(ctx, defaultQueryTimeout)
+	defer cancel()
+
 	var urlToGet string
 
 	err := s.pool.QueryRow(ctx, selectURLQuery, alias).Scan(&urlToGet)
 	if err != nil {
-		// Проверяем, вернулась ли ошибка из-за того, что запись не найдена
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", fmt.Errorf("%s: %w", op, domain.ErrURLNotFound)
 		}
@@ -107,6 +121,9 @@ func (s *PostgresRepo) Get(ctx context.Context, alias string) (string, error) {
 
 func (s *PostgresRepo) Delete(ctx context.Context, alias string) error {
 	const op = "storage.postgres.Delete"
+
+	ctx, cancel := context.WithTimeout(ctx, defaultQueryTimeout)
+	defer cancel()
 
 	tag, err := s.pool.Exec(ctx, deleteURLQuery, alias)
 	if err != nil {

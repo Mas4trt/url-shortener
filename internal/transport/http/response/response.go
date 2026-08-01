@@ -63,6 +63,9 @@ func validationMessage(err validator.FieldError) string {
 	case "url":
 		return "must be a valid URL"
 
+	case "url_scheme":
+		return "must use http or https"
+
 	case "min":
 		return fmt.Sprintf("must be at least %s characters", err.Param())
 
@@ -77,7 +80,7 @@ func validationMessage(err validator.FieldError) string {
 	}
 }
 
-// Respond — универсальная обертка для отправки JSON-ответа
+// Respond — universal JSON response wrapper.
 func Respond(w http.ResponseWriter, r *http.Request, code int, v any) {
 	render.Status(r, code)
 	render.JSON(w, r, v)
