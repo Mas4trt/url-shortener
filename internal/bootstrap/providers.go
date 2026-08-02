@@ -50,6 +50,12 @@ func provideCacheTTL(cfg *config.Config) time.Duration {
 	return cfg.TTL
 }
 
+// provideValidator used to discard validation.New's error entirely
+// (`validate, _ := validation.New()`). If custom-tag registration ever
+// failed — e.g. a duplicate tag name introduced in a future change — that
+// produced a nil *validator.Validate which panics on the first request
+// instead of failing at startup where it belongs. Now it's a normal
+// fallible provider like everything else in this file.
 func provideValidator() (*validator.Validate, error) {
 	return validation.New()
 }
@@ -80,18 +86,19 @@ func provideSSOClient(opts ssoclient.Options) (*ssoclient.Client, func(), error)
 }
 
 // provideAuthVerifier builds the local JWT verifier from the secret this
-// service was provisioned with in sso (see config.SSOConfig doc comment).
+// service was provisioned with in sso. It now fails startup — rather than
+// silently under-validating every token — if SSO_APPLICATION_ID or
+// SSO_APP_SECRET were left unset; see authn.ErrMissingApplicationID.
 func provideAuthVerifier(cfg *config.Config) (*authn.Verifier, error) {
-	return authn.NewVerifier(
-		cfg.SSO.AppSecret,
-		cfg.SSO.ApplicationID,
-	)
+	return authn.NewVerifier(cfg.SSO.AppSecret, cfg.SSO.ApplicationID)
 }
 
 func provideLogger(cfg *config.Config) *slog.Logger {
+	var base *slog.Logger
+
 	switch cfg.Env {
 	case envLocal:
-		return slog.New(
+		base = slog.New(
 			slog.NewTextHandler(
 				os.Stdout,
 				&slog.HandlerOptions{
@@ -101,7 +108,7 @@ func provideLogger(cfg *config.Config) *slog.Logger {
 		)
 
 	case envDev:
-		return slog.New(
+		base = slog.New(
 			slog.NewJSONHandler(
 				os.Stdout,
 				&slog.HandlerOptions{
@@ -111,7 +118,7 @@ func provideLogger(cfg *config.Config) *slog.Logger {
 		)
 
 	case envProd:
-		return slog.New(
+		base = slog.New(
 			slog.NewJSONHandler(
 				os.Stdout,
 				&slog.HandlerOptions{
@@ -121,7 +128,7 @@ func provideLogger(cfg *config.Config) *slog.Logger {
 		)
 
 	default:
-		return slog.New(
+		base = slog.New(
 			slog.NewJSONHandler(
 				os.Stdout,
 				&slog.HandlerOptions{
@@ -130,6 +137,11 @@ func provideLogger(cfg *config.Config) *slog.Logger {
 			),
 		)
 	}
+
+	// A "service" attribute on every log line costs nothing locally and
+	// is what makes this service's logs findable once they land in a
+	// shared/centralized log store alongside sso and anything else.
+	return base.With(slog.String("service", "url-shortener"))
 }
 
 func RunMigrations(migrationsPath string, cfg *config.Config) error {
