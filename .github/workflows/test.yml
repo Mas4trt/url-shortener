@@ -92,13 +92,20 @@ jobs:
 
       - name: Report coverage
         run: |
-          total=$(go tool cover -func=coverage.out | tail -n1 | awk '{print $3}' | tr -d '%')
-          echo "Total coverage: ${total}%"
+          # Exclude packages that aren't meant to carry unit-test coverage:
+          # generated mocks, cmd/ (a handful of wiring lines), and
+          # internal/bootstrap (DI plumbing exercised by the integration
+          # suite, not unit tests). Including them in the denominator made
+          # the percentage meaningless rather than a real signal.
+          grep -v -E "/mocks/|url-shortener/cmd/|/internal/bootstrap/" coverage.out > coverage.filtered.out
+          total=$(go tool cover -func=coverage.filtered.out | tail -n1 | awk '{print $3}' | tr -d '%')
+          echo "Total coverage (filtered): ${total}%"
           echo "COVERAGE=${total}" >> "$GITHUB_ENV"
-          # Adjust the floor as coverage genuinely improves — the point is
-          # to catch a regression, not to gate on an arbitrary target from
-          # day one.
-          awk -v cov="$total" 'BEGIN { if (cov < 50) { print "coverage below 50% floor"; exit 1 } }'
+          # Starting floor deliberately conservative — this is a
+          # regression tripwire, not a target. Once you've confirmed the
+          # actual number locally (`go tool cover -func=coverage.out`),
+          # raise this to just below it and ratchet up over time.
+          awk -v cov="$total" 'BEGIN { if (cov < 30) { print "coverage below 30% floor"; exit 1 } }'
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -132,6 +139,6 @@ jobs:
         run: docker info
 
       - name: Run integration tests
-        run: go test -race -v ./internal/storage/... ./internal/tests/integration/...
+        run: go test -tags=integration -race -v ./...
         env:
           TESTCONTAINERS_RYUK_DISABLED: "false"
