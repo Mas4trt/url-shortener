@@ -73,7 +73,10 @@ func (s *IntegrationSuite) SetupSuite() {
 
 	authv1.RegisterAuthServer(
 		s.ssoServer,
-		&mocks.MockSSO{},
+		&mocks.MockSSO{
+			Secret:        testAppSecret,
+			ApplicationID: s.cfg.SSO.ApplicationID,
+		},
 	)
 	go func() {
 		_ = s.ssoServer.Serve(listener)

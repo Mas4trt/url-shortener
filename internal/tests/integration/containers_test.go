@@ -43,7 +43,14 @@ func startPostgres(
 		postgres.WithUsername(postgresUser),
 		postgres.WithPassword(postgresPassword),
 		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp"),
+			// ForListeningPort одного недостаточно: postgres слушает порт
+			// уже во время initdb, до собственного рестарта — и в этот
+			// момент отвечает 57P03 "the database system is starting up".
+			// Ждём лог-сообщение о готовности дважды (initdb + основной
+			// запуск), как уже сделано в repository_test.go.
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
 		),
 	)
 
