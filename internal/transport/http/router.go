@@ -17,22 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// writeEndpointRate/writeEndpointBurst bound how fast a single client can
-// create/delete short links. Generous enough for normal use, tight enough
-// to blunt a naive scripted flood; tune per traffic profile.
-const (
-	writeEndpointRate  = 5.0
-	writeEndpointBurst = 20.0
-
-	// authEndpointRate/authEndpointBurst сильно жёстче: /auth/login и
-	// /auth/register неаутентифицированы по дизайну, поэтому это прямая
-	// цель для brute-force и спам-регистраций. До этого там не было
-	// вообще никакого лимита.
-	authEndpointRate  = 1.0
-	authEndpointBurst = 5.0
-
-	limiterEntryTTL = 10 * time.Minute
-)
+const limiterEntryTTL = 10 * time.Minute
 
 func NewRouter(
 	log *slog.Logger,
