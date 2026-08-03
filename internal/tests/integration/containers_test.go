@@ -27,6 +27,8 @@ const (
 	postgresDB       = "urlshortener"
 
 	redisPort = "6379"
+
+	testAppSecret = "integration-test-app-secret-dont-use-this-in-production"
 )
 
 func startPostgres(
@@ -109,6 +111,7 @@ func newTestConfig(
 		SSO: config.SSOConfig{
 			Addr:          ssoAddr,
 			ApplicationID: 1,
+			AppSecret:     testAppSecret,
 			DialTimeout:   5 * time.Second,
 		},
 

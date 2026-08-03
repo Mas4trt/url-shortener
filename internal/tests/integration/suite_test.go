@@ -35,6 +35,7 @@ type IntegrationSuite struct {
 	redisContainer testcontainers.Container
 	ssoServer      *grpc.Server
 	ssoAddr        string
+	accessToken    string
 }
 
 func TestIntegrationSuite(t *testing.T) {
@@ -83,6 +84,10 @@ func (s *IntegrationSuite) SetupSuite() {
 		redisAddr,
 		s.ssoAddr,
 	)
+
+	token, err := issueTestAccessToken(s.cfg.SSO.AppSecret, s.cfg.SSO.ApplicationID)
+	require.NoError(s.T(), err)
+	s.accessToken = token
 
 	require.NoError(
 		s.T(),

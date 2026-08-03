@@ -49,6 +49,8 @@ func (s *IntegrationSuite) NewRequest(
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	req.Header.Set("Authorization", "Bearer "+s.accessToken)
+
 	return req
 }
 
