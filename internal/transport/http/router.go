@@ -21,9 +21,17 @@ import (
 // create/delete short links. Generous enough for normal use, tight enough
 // to blunt a naive scripted flood; tune per traffic profile.
 const (
-	writeEndpointRate  = 5.0 // requests/sec
+	writeEndpointRate  = 5.0
 	writeEndpointBurst = 20.0
-	limiterEntryTTL    = 10 * time.Minute
+
+	// authEndpointRate/authEndpointBurst сильно жёстче: /auth/login и
+	// /auth/register неаутентифицированы по дизайну, поэтому это прямая
+	// цель для brute-force и спам-регистраций. До этого там не было
+	// вообще никакого лимита.
+	authEndpointRate  = 1.0
+	authEndpointBurst = 5.0
+
+	limiterEntryTTL = 10 * time.Minute
 )
 
 func NewRouter(
@@ -41,8 +49,10 @@ func NewRouter(
 	router.Use(logger.New(log))
 	router.Use(middleware.Recoverer)
 
+	authLimiter := ratelimit.New(authEndpointRate, authEndpointBurst, limiterEntryTTL)
 	// Auth: proxies to sso, no local auth required to call these.
 	router.Route("/auth", func(r chi.Router) {
+		r.Use(authLimiter.Middleware)
 		r.Post("/register", authHandler.Register)
 		r.Post("/login", authHandler.Login)
 		r.Post("/refresh", authHandler.Refresh)

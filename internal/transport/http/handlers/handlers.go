@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/mail"
 
 	"url-shortener/internal/ssoclient"
 	"url-shortener/internal/transport/http/response"
@@ -12,6 +14,10 @@ import (
 
 	"github.com/go-chi/render"
 )
+
+const maxAuthRequestBytes = 1 << 20 // 1 MiB
+
+const minPasswordLength = 8
 
 // AuthService is what the auth handler expects from sso — satisfied by
 // *ssoclient.Client.
@@ -55,9 +61,21 @@ type tokenResponse struct {
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthRequestBytes)
+
 	var req registerRequest
-	if err := render.DecodeJSON(r.Body, &req); err != nil || req.Email == "" || req.Password == "" {
-		response.Respond(w, r, http.StatusBadRequest, response.Error("email and password are required"))
+	if err := render.DecodeJSON(r.Body, &req); err != nil {
+		response.Respond(w, r, http.StatusBadRequest, response.Error("failed to decode request"))
+		return
+	}
+
+	if err := validateEmail(req.Email); err != nil {
+		response.Respond(w, r, http.StatusBadRequest, response.Error(err.Error()))
+		return
+	}
+	if len(req.Password) < minPasswordLength {
+		response.Respond(w, r, http.StatusBadRequest,
+			response.Error(fmt.Sprintf("password must be at least %d characters", minPasswordLength)))
 		return
 	}
 
@@ -76,9 +94,20 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthRequestBytes)
+
 	var req loginRequest
-	if err := render.DecodeJSON(r.Body, &req); err != nil || req.Email == "" || req.Password == "" {
-		response.Respond(w, r, http.StatusBadRequest, response.Error("email and password are required"))
+	if err := render.DecodeJSON(r.Body, &req); err != nil {
+		response.Respond(w, r, http.StatusBadRequest, response.Error("failed to decode request"))
+		return
+	}
+
+	if err := validateEmail(req.Email); err != nil {
+		response.Respond(w, r, http.StatusBadRequest, response.Error(err.Error()))
+		return
+	}
+	if req.Password == "" {
+		response.Respond(w, r, http.StatusBadRequest, response.Error("password is required"))
 		return
 	}
 
@@ -101,6 +130,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthRequestBytes)
+
 	var req refreshRequest
 	if err := render.DecodeJSON(r.Body, &req); err != nil || req.RefreshToken == "" {
 		response.Respond(w, r, http.StatusBadRequest, response.Error("refresh_token is required"))
@@ -126,6 +157,8 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthRequestBytes)
+
 	var req refreshRequest
 	if err := render.DecodeJSON(r.Body, &req); err != nil || req.RefreshToken == "" {
 		response.Respond(w, r, http.StatusBadRequest, response.Error("refresh_token is required"))
@@ -139,4 +172,14 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func validateEmail(email string) error {
+	if email == "" {
+		return errors.New("email is required")
+	}
+	if _, err := mail.ParseAddress(email); err != nil {
+		return errors.New("email must be a valid address")
+	}
+	return nil
 }
