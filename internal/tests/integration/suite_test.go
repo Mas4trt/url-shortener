@@ -69,6 +69,12 @@ func (s *IntegrationSuite) SetupSuite() {
 
 	s.ssoAddr = listener.Addr().String()
 
+	s.cfg = newTestConfig(
+		dbURL,
+		redisAddr,
+		s.ssoAddr,
+	)
+
 	s.ssoServer = grpc.NewServer()
 
 	authv1.RegisterAuthServer(
@@ -81,12 +87,6 @@ func (s *IntegrationSuite) SetupSuite() {
 	go func() {
 		_ = s.ssoServer.Serve(listener)
 	}()
-
-	s.cfg = newTestConfig(
-		dbURL,
-		redisAddr,
-		s.ssoAddr,
-	)
 
 	token, err := issueTestAccessToken(s.cfg.SSO.AppSecret, s.cfg.SSO.ApplicationID)
 	require.NoError(s.T(), err)
